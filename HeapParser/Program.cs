@@ -1,16 +1,14 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 using Newtonsoft.Json;
-using System.Runtime.Serialization;
-using System.Diagnostics;
 
 namespace ConsoleApplication1 {
 
 	public abstract class HeapDescriptor {
+
+		protected static char[] CharBuffer = new char[1024];
 
 		public abstract void LoadFrom( BinaryReader inputStream );
 
@@ -36,8 +34,8 @@ namespace ConsoleApplication1 {
 			FileVersion = inputStream.ReadInt32();
 
 			var stringLength = inputStream.ReadUInt32();
-			var chars = inputStream.ReadChars( (int)stringLength );
-			FileLabel = new string( chars );
+			inputStream.Read( CharBuffer, 0, (int)stringLength );
+			FileLabel = new string( CharBuffer, 0, (int)stringLength );
 
 			Timestamp = inputStream.ReadUInt64();
 			PointerSize = inputStream.ReadByte();
@@ -85,11 +83,8 @@ namespace ConsoleApplication1 {
 
 	[Serializable]
 	public class HeapMemoryStart : HeapDescriptor {
-		public uint WrittenSectionsCount;
 		public uint MemoryTotalHeapBytes;
 		public uint MemoryTotalBytesWritten;
-		public uint MemoryTotalRoots;
-		public uint MemoryTotalThreads;
 
 		public HeapMemorySection[] HeapMemorySections;
 
@@ -99,15 +94,18 @@ namespace ConsoleApplication1 {
 
 		public override void LoadFrom(BinaryReader inputStream) {
 
-			WrittenSectionsCount = inputStream.ReadUInt32();
+			var writtenSectionsCount = inputStream.ReadUInt32();
+
 			MemoryTotalHeapBytes = inputStream.ReadUInt32();
 			MemoryTotalBytesWritten = inputStream.ReadUInt32();
-			MemoryTotalRoots = inputStream.ReadUInt32();
-			MemoryTotalThreads = inputStream.ReadUInt32();
 
-			HeapMemorySections = new HeapMemorySection[WrittenSectionsCount];
+			var memoryTotalRoots = inputStream.ReadUInt32();
 
-			for (var i = 0; i < WrittenSectionsCount; ++i ) {
+			var memoryTotalThreads = inputStream.ReadUInt32();
+
+			HeapMemorySections = new HeapMemorySection[writtenSectionsCount];
+
+			for (var i = 0; i < writtenSectionsCount; ++i ) {
 
 				EnsureTag( (HeapTag)inputStream.ReadByte(), HeapTag.cTagHeapMemorySection );
 
@@ -117,9 +115,9 @@ namespace ConsoleApplication1 {
 
 			EnsureTag( (HeapTag)inputStream.ReadByte(), HeapTag.cTagHeapMemoryRoots );
 
-			HeapMemoryStaticRoots = new HeapMemoryRootSet[MemoryTotalRoots];
+			HeapMemoryStaticRoots = new HeapMemoryRootSet[memoryTotalRoots];
 
-			for (var i = 0; i < MemoryTotalRoots; ++i ) {
+			for (var i = 0; i < memoryTotalRoots; ++i ) {
 
 				HeapMemoryStaticRoots[i] = new HeapMemoryRootSet();
 				HeapMemoryStaticRoots[i].LoadFrom( inputStream );
@@ -127,9 +125,9 @@ namespace ConsoleApplication1 {
 
 			EnsureTag( (HeapTag)inputStream.ReadByte(), HeapTag.cTagHeapMemoryThreads );
 
-			HeapMemoryThreads = new HeapMemoryThread[MemoryTotalThreads];
+			HeapMemoryThreads = new HeapMemoryThread[memoryTotalThreads];
 			
-			for (var i = 0; i < MemoryTotalThreads;++i ) {
+			for (var i = 0; i < memoryTotalThreads;++i ) {
 
 				HeapMemoryThreads[i] = new HeapMemoryThread();
 				HeapMemoryThreads[i].LoadFrom( inputStream );
@@ -151,7 +149,6 @@ namespace ConsoleApplication1 {
 	public class HeapMemorySection : HeapDescriptor {
 		public ulong StartPtr;
 		public ulong EndPtr;
-		public uint BlocksWrittenCount;
 
 		public HeapSectionBlock[] HeapSectionBlocks;
 
@@ -159,10 +156,10 @@ namespace ConsoleApplication1 {
 
 			StartPtr = inputStream.ReadUInt64();
 			EndPtr = inputStream.ReadUInt64();
-			BlocksWrittenCount = inputStream.ReadUInt32();
+			var blocksWrittenCount = inputStream.ReadUInt32();
 
-			HeapSectionBlocks = new HeapSectionBlock[BlocksWrittenCount];
-			for (var i = 0; i < BlocksWrittenCount; ++i ) {
+			HeapSectionBlocks = new HeapSectionBlock[blocksWrittenCount];
+			for (var i = 0; i < blocksWrittenCount; ++i ) {
 
 				EnsureTag( (HeapTag)inputStream.ReadByte(), HeapTag.cTagHeapMemorySectionBlock );
 
@@ -281,8 +278,8 @@ namespace ConsoleApplication1 {
 			StacktraceHash = inputStream.ReadUInt32();
 
 			var stringLength = inputStream.ReadUInt32();
-			var chars = inputStream.ReadChars( (int)stringLength );
-			StacktraceBuffer = new string( chars );
+			inputStream.Read( CharBuffer, 0, (int)stringLength );
+			StacktraceBuffer = new string( CharBuffer, 0, (int)stringLength );
 		}
 	}
 
@@ -322,7 +319,6 @@ namespace ConsoleApplication1 {
 		public uint TotalLiveObjectsBefore;
 		public ulong TotalLiveBytesAfter;
 		public uint TotalLiveObjectsAfter;
-		public uint NumberOfAccountants;
 		public GarbageCollectionAccountant[] Accountants;
 
 		public override void LoadFrom( BinaryReader inputStream ) {
@@ -331,11 +327,11 @@ namespace ConsoleApplication1 {
 			Timestamp = inputStream.ReadUInt64();
 			TotalLiveBytesBefore = inputStream.ReadUInt64();
 			TotalLiveObjectsBefore = inputStream.ReadUInt32();
-			NumberOfAccountants = inputStream.ReadUInt32();
 
+			var numberOfAccountants = inputStream.ReadUInt32();
 
-			Accountants = new GarbageCollectionAccountant[NumberOfAccountants];
-			for(var i = 0; i < NumberOfAccountants; ++i) {
+			Accountants = new GarbageCollectionAccountant[numberOfAccountants];
+			for(var i = 0; i < numberOfAccountants; ++i) {
 
 				Accountants[i] = new GarbageCollectionAccountant();
 				Accountants[i].LoadFrom( inputStream );
@@ -373,8 +369,8 @@ namespace ConsoleApplication1 {
 			ClassPtr = inputStream.ReadUInt64();
 
 			var stringLength = inputStream.ReadUInt32();
-			var chars = inputStream.ReadChars( (int)stringLength );
-			Name = new string( chars );
+			inputStream.Read( CharBuffer, 0, (int)stringLength );
+			Name = new string( CharBuffer, 0, (int)stringLength );
 			
 			Flags = inputStream.ReadByte();
 			Size = inputStream.ReadUInt32();
@@ -412,17 +408,17 @@ namespace ConsoleApplication1 {
 	public class BackTrace : HeapDescriptor {
 		public ulong BackTracePtr;
 		public ulong Timestamp;
-		public short StackFrameCount;
 
 		public BackTraceStackFrame[] StackFrames;
 
 		public override void LoadFrom( BinaryReader inputStream ) {
 			BackTracePtr = inputStream.ReadUInt64();
 			Timestamp = inputStream.ReadUInt64();
-			StackFrameCount = inputStream.ReadInt16();
 
-			StackFrames = new BackTraceStackFrame[StackFrameCount];
-			for (var i = 0; i < StackFrameCount; ++i) {
+			var stackFrameCount = inputStream.ReadInt16();
+
+			StackFrames = new BackTraceStackFrame[stackFrameCount];
+			for (var i = 0; i < stackFrameCount; ++i) {
 
 				StackFrames[i] = new BackTraceStackFrame();
 				StackFrames[i].LoadFrom( inputStream );
@@ -481,12 +477,12 @@ namespace ConsoleApplication1 {
 			ClassPtr = inputStream.ReadUInt64();
 			
 			var stringLength = inputStream.ReadUInt32();
-			var chars = inputStream.ReadChars( (int)stringLength );
-			Name = new string( chars );
+			inputStream.Read( CharBuffer, 0, (int)stringLength );
+			Name = new string( CharBuffer, 0, (int)stringLength );
 
 			stringLength = inputStream.ReadUInt32();
-			chars = inputStream.ReadChars( (int)stringLength );
-			SourceFileName = new string( chars );
+			inputStream.Read( CharBuffer, 0, (int)stringLength );
+			SourceFileName = new string( CharBuffer, 0, (int)stringLength );
 		}
 
 		public override void ApplyTo( MonoHeapState monoHeapState ) {
@@ -549,8 +545,8 @@ namespace ConsoleApplication1 {
 			Timestamp = inputStream.ReadUInt64();
 
 			var stringLength = inputStream.ReadUInt32();
-			var chars = inputStream.ReadChars( (int)stringLength );
-			EventName = new string( chars );
+			inputStream.Read( CharBuffer, 0, (int)stringLength );
+			EventName = new string( CharBuffer, 0, (int)stringLength );
 		}
 	}
 
@@ -795,8 +791,8 @@ namespace ConsoleApplication1 {
 				}
 			}
 
-			TargetGcEvent = _garbageCollectionEvents[_garbageCollectionEvents.Count - 8];
-			Console.WriteLine( TargetGcEvent.Timestamp );
+			//TargetGcEvent = _garbageCollectionEvents[_garbageCollectionEvents.Count - 8];
+			//Console.WriteLine( TargetGcEvent.Timestamp );
 		}
 
 		public List<HeapDescriptor> GetHeapDescriptors() {
@@ -833,6 +829,69 @@ namespace ConsoleApplication1 {
 			}
 
 			return customEvents[resultIndex];
+		}
+
+		private static void DumpAllocationByType( HeapTagParser heapTagParser, MonoHeapState monoHeapState, string dumpFilePath ) {
+
+			var fromTag = SelectTargetCustomEvent( heapTagParser.GetCustomEvents() );
+			var toTag = SelectTargetCustomEvent( heapTagParser.GetCustomEvents() );
+
+			//var monoHeapState = new MonoHeapState();
+			monoHeapState.ResetLiveObjects();
+			var didHitBeginning = false;
+			foreach(var each in heapTagParser.GetHeapDescriptors() ) {
+
+				if ( !didHitBeginning ) {
+
+					didHitBeginning = each == fromTag;
+
+					continue;
+				}
+
+				if (each == toTag) {
+
+					break;
+				}
+
+				if ( didHitBeginning ) {
+
+					each.ApplyTo( monoHeapState );
+				}
+			}
+			
+			using ( var outStream = new FileStream( dumpFilePath + ".AllocationByBacktrace.txt", FileMode.Create ) ) {
+
+				var streamWriter = new StreamWriter( outStream );
+
+				monoHeapState.DumpMethodAllocationStatsByBacktrace( streamWriter );
+
+				streamWriter.Close();
+			}
+
+			using ( var outStream = new FileStream( dumpFilePath + ".AllocationByType.txt", FileMode.Create ) ) {
+
+				var streamWriter = new StreamWriter( outStream );
+
+				monoHeapState.DumpMethodAllocationStatsByType( streamWriter );
+
+				streamWriter.Close();
+			}
+
+			Console.WriteLine( "Select types to dump allocation stats for: " );
+			var typeNames = Console.ReadLine();
+
+			foreach ( var each in typeNames.Split( ',' ) ) {
+
+				var fileName = each.Replace( "*", "_" );
+				using ( var outStream = new FileStream( dumpFilePath + ".AllocationByType." + fileName + ".txt", FileMode.Create ) ) {
+
+					var streamWriter = new StreamWriter( outStream );
+
+					monoHeapState.DumpMethodAllocationStatsByType( streamWriter, each );
+
+					streamWriter.Close();
+				}
+			}
 		}
 
 		static void Main( string[] args ) {
@@ -880,6 +939,8 @@ namespace ConsoleApplication1 {
 
 					writer.Close();
 				}
+
+				DumpAllocationByType(heapTagParser, monoHeapState, args[0]);
 
 				//using ( var outStream = new FileStream( args[0] + ".heap.out.txt", FileMode.Create ) ) {
 

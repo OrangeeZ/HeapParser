@@ -1,1042 +1,1249 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Data.Odbc;
+using System.Diagnostics;
 using System.IO;
+using System.Linq;
+using System.Runtime.Serialization.Formatters;
 using System.Text;
 using Newtonsoft.Json;
-
-namespace ConsoleApplication1 {
-
-	public abstract class HeapDescriptor {
-
-		protected static char[] CharBuffer = new char[1024];
-
-		public abstract void LoadFrom( BinaryReader inputStream );
-
-		public virtual void ApplyTo(MonoHeapState monoHeapState ) {
-
-		}
-	}
-
-	[Serializable]
-	public class FileWriterStats : HeapDescriptor {
-
-		public uint FileSignature;
-		public int FileVersion;
-		public string FileLabel;
-		public ulong Timestamp;
-		public byte PointerSize;
-		public byte PlatformId;
-		public bool IsLogFullyWritten;
-
-		public override void LoadFrom( BinaryReader inputStream ) {
-
-			FileSignature = inputStream.ReadUInt32();
-			FileVersion = inputStream.ReadInt32();
-
-			var stringLength = inputStream.ReadUInt32();
-			inputStream.Read( CharBuffer, 0, (int)stringLength );
-			FileLabel = new string( CharBuffer, 0, (int)stringLength );
-
-			Timestamp = inputStream.ReadUInt64();
-			PointerSize = inputStream.ReadByte();
-			PlatformId = inputStream.ReadByte();
-
-			IsLogFullyWritten = inputStream.ReadBoolean();
-		}
-	}
-
-	public class HeapDumpStats : HeapDescriptor {
-		public uint TotalGcCount;
-		public uint TotalTypeCount;
-		public uint TotalMethodCount;
-		public uint TotalBacktraceCount;
-		public uint TotalResizeCount;
-
-		public ulong TotalFramesCount;
-		public ulong TotalObjectNewCount;
-		public ulong TotalObjectResizesCount;
-		public ulong TotalObjectGcsCount;
-		public ulong TotalBoehmNewCount;
-		public ulong TotalBoehmFreeCount;
-
-		public ulong TotalAllocatedBytes;
-		public uint TotalAllocatedObjects;
-
-		public override void LoadFrom( BinaryReader inputStream ) {
-			TotalGcCount = inputStream.ReadUInt32();
-			TotalTypeCount = inputStream.ReadUInt32();
-			TotalMethodCount = inputStream.ReadUInt32();
-			TotalBacktraceCount = inputStream.ReadUInt32();
-			TotalResizeCount = inputStream.ReadUInt32();
-
-			TotalFramesCount = inputStream.ReadUInt64();
-			TotalObjectNewCount = inputStream.ReadUInt64();
-			TotalObjectResizesCount = inputStream.ReadUInt64();
-			TotalObjectGcsCount = inputStream.ReadUInt64();
-			TotalBoehmNewCount = inputStream.ReadUInt64();
-			TotalBoehmFreeCount = inputStream.ReadUInt64();
-
-			TotalAllocatedBytes = inputStream.ReadUInt64();
-			TotalAllocatedObjects = inputStream.ReadUInt32();
-		}
-	}
-
-	[Serializable]
-	public class HeapMemoryStart : HeapDescriptor {
-		public uint MemoryTotalHeapBytes;
-		public uint MemoryTotalBytesWritten;
-
-		public HeapMemorySection[] HeapMemorySections;
-
-		public HeapMemoryRootSet[] HeapMemoryStaticRoots;
-
-		public HeapMemoryThread[] HeapMemoryThreads;
-
-		public override void LoadFrom(BinaryReader inputStream) {
-
-			var writtenSectionsCount = inputStream.ReadUInt32();
-
-			MemoryTotalHeapBytes = inputStream.ReadUInt32();
-			MemoryTotalBytesWritten = inputStream.ReadUInt32();
-
-			var memoryTotalRoots = inputStream.ReadUInt32();
-
-			var memoryTotalThreads = inputStream.ReadUInt32();
-
-			HeapMemorySections = new HeapMemorySection[writtenSectionsCount];
-
-			for (var i = 0; i < writtenSectionsCount; ++i ) {
-
-				EnsureTag( (HeapTag)inputStream.ReadByte(), HeapTag.cTagHeapMemorySection );
-
-				HeapMemorySections[i] = new HeapMemorySection();
-				HeapMemorySections[i].LoadFrom( inputStream );
-			}
-
-			EnsureTag( (HeapTag)inputStream.ReadByte(), HeapTag.cTagHeapMemoryRoots );
-
-			HeapMemoryStaticRoots = new HeapMemoryRootSet[memoryTotalRoots];
-
-			for (var i = 0; i < memoryTotalRoots; ++i ) {
-
-				HeapMemoryStaticRoots[i] = new HeapMemoryRootSet();
-				HeapMemoryStaticRoots[i].LoadFrom( inputStream );
-			}
-
-			EnsureTag( (HeapTag)inputStream.ReadByte(), HeapTag.cTagHeapMemoryThreads );
-
-			HeapMemoryThreads = new HeapMemoryThread[memoryTotalThreads];
-			
-			for (var i = 0; i < memoryTotalThreads;++i ) {
-
-				HeapMemoryThreads[i] = new HeapMemoryThread();
-				HeapMemoryThreads[i].LoadFrom( inputStream );
-			}
-
-			EnsureTag( (HeapTag)inputStream.ReadByte(), HeapTag.cTagHeapMemoryEnd );
-		}
-
-		private static void EnsureTag(HeapTag currentTag, HeapTag expectedTag ) {
-			
-			if ( currentTag != expectedTag ) {
-
-				throw new Exception( string.Format( "Heap dump read error: got {0} expected {1}", currentTag, expectedTag ) );
-			}
-		}
-	}
-
-	[Serializable]
-	public class HeapMemorySection : HeapDescriptor {
-		public ulong StartPtr;
-		public ulong EndPtr;
-
-		public HeapSectionBlock[] HeapSectionBlocks;
-
-		public override void LoadFrom( BinaryReader inputStream ) {
-
-			StartPtr = inputStream.ReadUInt64();
-			EndPtr = inputStream.ReadUInt64();
-			var blocksWrittenCount = inputStream.ReadUInt32();
-
-			HeapSectionBlocks = new HeapSectionBlock[blocksWrittenCount];
-			for (var i = 0; i < blocksWrittenCount; ++i ) {
-
-				EnsureTag( (HeapTag)inputStream.ReadByte(), HeapTag.cTagHeapMemorySectionBlock );
-
-				HeapSectionBlocks[i] = new HeapSectionBlock();
-				HeapSectionBlocks[i].LoadFrom( inputStream );
-			}
-		}
-
-		private static void EnsureTag( HeapTag currentTag, HeapTag expectedTag ) {
-
-			if ( currentTag != expectedTag ) {
-
-				throw new Exception( string.Format( "Heap dump read error: got {0} expected {1}", currentTag, expectedTag ) );
-			}
-		}
-	}
-
-	[Serializable]
-	public class HeapSectionBlock : HeapDescriptor {
-		public ulong StartPtr;
-		public uint Size;
-		public uint ObjSize;
-		public byte BlockKind;
-		public bool IsFree;
-		public ulong[] ObjectPtrs;
-
-		public override void LoadFrom( BinaryReader inputStream ) {
-
-			StartPtr = inputStream.ReadUInt64();
-			Size = inputStream.ReadUInt32();
-			ObjSize = inputStream.ReadUInt32();
-			BlockKind = inputStream.ReadByte();
-			IsFree = inputStream.ReadBoolean();
-
-			if (!IsFree) {
-
-				var ptrSize = 4;
-				var ptrCount = Size / ptrSize;
-				ObjectPtrs = new ulong[ptrCount];
-
-				for ( var i = 0; i < ptrCount; ++i ) {
-
-					ObjectPtrs[i] = inputStream.ReadUInt32();
-				}
-			}
-		}
-	}
-
-	public class HeapMemoryRootSet : HeapDescriptor {
-
-		public ulong StartPtr;
-		public ulong EndPtr;
-		public uint Size;
-		public ulong[] ObjectPtrs; // TODO: check what actually lies in root sets
-
-		public override void LoadFrom( BinaryReader inputStream ) {
-
-			StartPtr = inputStream.ReadUInt64();
-			EndPtr = inputStream.ReadUInt64();
-			Size = inputStream.ReadUInt32();
-
-			var ptrSize = 4;
-			var ptrCount = Size / ptrSize;
-			ObjectPtrs = new ulong[ptrCount];
-
-			for (var i = 0; i < ptrCount; ++i ) {
-
-				ObjectPtrs[i] = inputStream.ReadUInt32();
-			}
-		}
-	}
-
-	public class HeapMemoryThread : HeapDescriptor {
-
-		public int ThreadId;
-		public ulong StackPtr;
-		public uint StackSize;
-		public uint RegistersSize;
-
-		public byte[] RawStackMemory;
-		public byte[] RawRegistersMemory;
-
-		public override void LoadFrom( BinaryReader inputStream ) {
-
-			ThreadId = inputStream.ReadInt32();
-			StackPtr = inputStream.ReadUInt64();
-			StackSize = inputStream.ReadUInt32();
-			RegistersSize = inputStream.ReadUInt32();
-
-			RawStackMemory = inputStream.ReadBytes( (int)StackSize );
-			RawRegistersMemory = inputStream.ReadBytes( (int)RegistersSize );
-		}
-	}
-
-	public class BoehmAllocation : HeapDescriptor {
-
-		public ulong Timestamp;
-		public ulong AllocatedObjectPtr;
-		public uint Size;
-		public uint StacktraceHash;
-
-		public override void LoadFrom( BinaryReader inputStream ) {
-			Timestamp = inputStream.ReadUInt64();
-			AllocatedObjectPtr = inputStream.ReadUInt64();
-			Size = inputStream.ReadUInt32();
-			StacktraceHash = inputStream.ReadUInt32();
-		}
-	}
-
-	public class BoehmAllocationStacktrace : HeapDescriptor {
-
-		public uint StacktraceHash;
-		public string StacktraceBuffer;
-
-		public override void LoadFrom( BinaryReader inputStream ) {
-			StacktraceHash = inputStream.ReadUInt32();
-
-			var stringLength = inputStream.ReadUInt32();
-			inputStream.Read( CharBuffer, 0, (int)stringLength );
-			StacktraceBuffer = new string( CharBuffer, 0, (int)stringLength );
-		}
-	}
-
-	public class GarbageCollectionAccountant : HeapDescriptor {
-
-		public ulong BackTracePtr;
-		public ulong ClassPtr;
-		public uint NumberOfAllocatedObjects;
-		public ulong NunberOfAllocatedBytes;
-		public uint AllocatedTotalAge;
-		public uint AllocatedTotalWeight;
-		public uint NumberOfLiveObjects;
-		public uint NumberOfLiveBytes;
-		public uint LiveTotalAge;
-		public uint LiveTotalWeight;
-
-		public override void LoadFrom( BinaryReader inputStream ) {
-
-			BackTracePtr = inputStream.ReadUInt64();
-			ClassPtr = inputStream.ReadUInt64();
-			NumberOfAllocatedObjects = inputStream.ReadUInt32();
-			NunberOfAllocatedBytes = inputStream.ReadUInt64();
-			AllocatedTotalAge = inputStream.ReadUInt32();
-			AllocatedTotalWeight = inputStream.ReadUInt32();
-			NumberOfLiveObjects = inputStream.ReadUInt32();
-			NumberOfLiveBytes = inputStream.ReadUInt32();
-			LiveTotalAge = inputStream.ReadUInt32();
-			LiveTotalWeight = inputStream.ReadUInt32();
-		}
-	}
-
-	public class GarbageCollection : HeapDescriptor {
-
-		public int TotalGcCount;
-		public ulong Timestamp;
-		public ulong TotalLiveBytesBefore;
-		public uint TotalLiveObjectsBefore;
-		public ulong TotalLiveBytesAfter;
-		public uint TotalLiveObjectsAfter;
-		public GarbageCollectionAccountant[] Accountants;
-
-		public override void LoadFrom( BinaryReader inputStream ) {
-
-			TotalGcCount = inputStream.ReadInt32();
-			Timestamp = inputStream.ReadUInt64();
-			TotalLiveBytesBefore = inputStream.ReadUInt64();
-			TotalLiveObjectsBefore = inputStream.ReadUInt32();
-
-			var numberOfAccountants = inputStream.ReadUInt32();
-
-			Accountants = new GarbageCollectionAccountant[numberOfAccountants];
-			for(var i = 0; i < numberOfAccountants; ++i) {
-
-				Accountants[i] = new GarbageCollectionAccountant();
-				Accountants[i].LoadFrom( inputStream );
-			}
-
-			TotalLiveBytesAfter = inputStream.ReadUInt64();
-			TotalLiveObjectsAfter = inputStream.ReadUInt32();
-		}
-
-		public override void ApplyTo( MonoHeapState monoHeapState ) {
-
-			monoHeapState.GarbageCollections.Add( this );
-		}
-	}
-
-	public class HeapSizeStats : HeapDescriptor {
-		public ulong HeapSize;
-		public ulong HeapUsedSize;
-
-		public override void LoadFrom( BinaryReader inputStream ) {
-			HeapSize = inputStream.ReadUInt64();
-			HeapUsedSize = inputStream.ReadUInt64();
-		}
-	}
-
-	public class MonoClass : HeapDescriptor {
-
-		public ulong ClassPtr;
-		public string Name;
-		public byte Flags;
-		public uint Size;
-		public uint MinAlignment;
-
-		public override void LoadFrom( BinaryReader inputStream ) {
-			ClassPtr = inputStream.ReadUInt64();
-
-			var stringLength = inputStream.ReadUInt32();
-			inputStream.Read( CharBuffer, 0, (int)stringLength );
-			Name = new string( CharBuffer, 0, (int)stringLength );
-			
-			Flags = inputStream.ReadByte();
-			Size = inputStream.ReadUInt32();
-			MinAlignment = inputStream.ReadUInt32();
-		}
-
-		public override void ApplyTo( MonoHeapState monoHeapState ) {
-
-			monoHeapState.PtrClassMapping[ClassPtr] = this;
-		}
-	}
-
-	public class MonoVTableCreate : HeapDescriptor{
-		public ulong Timestamp;
-		public ulong VTablePtr;
-		public ulong ClassPtr;
-
-		public override void LoadFrom( BinaryReader inputStream ) {
-			Timestamp = inputStream.ReadUInt64();
-			VTablePtr = inputStream.ReadUInt64();
-			ClassPtr = inputStream.ReadUInt64();
-		}
-	}
-
-	public class BackTraceStackFrame : HeapDescriptor {
-		public ulong MethodPtr;
-		public uint DebugLine;
-
-		public override void LoadFrom( BinaryReader inputStream ) {
-			MethodPtr = inputStream.ReadUInt64();
-			DebugLine = inputStream.ReadUInt32();
-		}
-	}
-
-	public class BackTrace : HeapDescriptor {
-		public ulong BackTracePtr;
-		public ulong Timestamp;
-
-		public BackTraceStackFrame[] StackFrames;
-
-		public override void LoadFrom( BinaryReader inputStream ) {
-			BackTracePtr = inputStream.ReadUInt64();
-			Timestamp = inputStream.ReadUInt64();
-
-			var stackFrameCount = inputStream.ReadInt16();
-
-			StackFrames = new BackTraceStackFrame[stackFrameCount];
-			for (var i = 0; i < stackFrameCount; ++i) {
-
-				StackFrames[i] = new BackTraceStackFrame();
-				StackFrames[i].LoadFrom( inputStream );
-			}
-		}
-
-		public override void ApplyTo( MonoHeapState monoHeapState ) {
-			monoHeapState.PtrBackTraceMapping[BackTracePtr] = this;
-		}
-	}
-
-	class BackTraceTypeLink : HeapDescriptor {
-		public ulong BackTracePtr;
-		public ulong ClassPtr;
-
-		public override void LoadFrom( BinaryReader inputStream ) {
-			BackTracePtr = inputStream.ReadUInt64();
-			ClassPtr = inputStream.ReadUInt64();
-		}
-
-		public override void ApplyTo( MonoHeapState monoHeapState ) {
-			monoHeapState.PtrBacktraceToPtrClass[BackTracePtr] = ClassPtr;
-		}
-	}
-
-	public class MonoObjectNew : HeapDescriptor {
-		public ulong Timestamp;
-		public ulong BackTracePtr;
-		public ulong ClassPtr;
-		public ulong ObjectPtr;
-		public uint Size;
-
-		public override void LoadFrom( BinaryReader inputStream ) {
-			Timestamp = inputStream.ReadUInt64();
-			BackTracePtr = inputStream.ReadUInt64();
-			ClassPtr = inputStream.ReadUInt64();
-			ObjectPtr = inputStream.ReadUInt64();
-			Size = inputStream.ReadUInt32();
-		}
-
-		public override void ApplyTo( MonoHeapState monoHeapState ) {
-
-			monoHeapState.AddLiveObject( this );
-		}
-	}
-
-	public class MonoMethod : HeapDescriptor {
-		public ulong MethodPtr;
-		public ulong ClassPtr;
-		public string Name;
-		public string SourceFileName;
-
-		public override void LoadFrom( BinaryReader inputStream ) {
-
-			MethodPtr = inputStream.ReadUInt64();
-			ClassPtr = inputStream.ReadUInt64();
-			
-			var stringLength = inputStream.ReadUInt32();
-			inputStream.Read( CharBuffer, 0, (int)stringLength );
-			Name = new string( CharBuffer, 0, (int)stringLength );
-
-			stringLength = inputStream.ReadUInt32();
-			inputStream.Read( CharBuffer, 0, (int)stringLength );
-			SourceFileName = new string( CharBuffer, 0, (int)stringLength );
-		}
-
-		public override void ApplyTo( MonoHeapState monoHeapState ) {
-
-			monoHeapState.PtrMethodMapping[MethodPtr] = this;
-		}
-	}
-
-	public class MonoObjectGarbageCollected : HeapDescriptor {
-		public ulong BackTracePtr;
-		public ulong ClassPtr;
-		public ulong ObjectPtr;
-
-		public override void LoadFrom( BinaryReader inputStream ) {
-			BackTracePtr = inputStream.ReadUInt64();
-			ClassPtr = inputStream.ReadUInt64();
-			ObjectPtr = inputStream.ReadUInt64();
-		}
-
-		public override void ApplyTo( MonoHeapState monoHeapState ) {
-
-			monoHeapState.RemoveLiveObject( this );
-		}
-	}
-
-	class MonoHeapResize : HeapDescriptor {
-		public ulong Timestamp;
-		public ulong NewSize;
-		public ulong TotalLiveBytes;
-		public uint TotalLiveObjects;
-
-		public override void LoadFrom( BinaryReader inputStream ) {
-			Timestamp = inputStream.ReadUInt64();
-			NewSize = inputStream.ReadUInt64();
-			TotalLiveBytes = inputStream.ReadUInt64();
-			TotalLiveObjects = inputStream.ReadUInt32();
-		}
-	}
-
-	class MonoObjectResize : HeapDescriptor {
-		public ulong BackTracePtr;
-		public ulong ClassPtr;
-		public ulong ObjectPtr;
-		public uint Size;
-
-		public override void LoadFrom( BinaryReader inputStream ) {
-			BackTracePtr = inputStream.ReadUInt64();
-			ClassPtr = inputStream.ReadUInt64();
-			ObjectPtr = inputStream.ReadUInt64();
-			Size = inputStream.ReadUInt32();
-		}
-	}
-
-	public class CustomEvent : HeapDescriptor {
-		public ulong Timestamp;
-		public string EventName;
-
-		public override void LoadFrom( BinaryReader inputStream ) {
-
-			Timestamp = inputStream.ReadUInt64();
-
-			var stringLength = inputStream.ReadUInt32();
-			inputStream.Read( CharBuffer, 0, (int)stringLength );
-			EventName = new string( CharBuffer, 0, (int)stringLength );
-		}
-	}
-
-	public class MonoStaticClassAllocation : HeapDescriptor {
-
-		public ulong Timestamp;
-		public ulong ClassPtr;
-		public ulong ObjectPtr; //TODO: verify this; from callstack it does look like static object ref, but who knows
-		public uint Size;
-
-		public override void LoadFrom( BinaryReader inputStream ) {
-
-			Timestamp = inputStream.ReadUInt64();
-			ClassPtr = inputStream.ReadUInt64();
-			ObjectPtr = inputStream.ReadUInt64();
-			Size = inputStream.ReadUInt32();
-		}
-
-		public override void ApplyTo( MonoHeapState monoHeapState ) {
-
-			monoHeapState.AddLiveObject( this );
-		}
-	}
-
-	public class MonoThreadTableResize : HeapDescriptor {
-
-		public ulong Timestamp;
-		public ulong TablePtr;
-		public uint TableCount;
-		public uint TableSize;
-
-		public override void LoadFrom( BinaryReader inputStream ) {
-			Timestamp = inputStream.ReadUInt64();
-			TablePtr = inputStream.ReadUInt64();
-			TableCount = inputStream.ReadUInt32();
-			TableSize = inputStream.ReadUInt32();
-		}
-	}
-	
-	public class MonoThreadStaticClassAllocation : HeapDescriptor { //TODO: verify that this is indeed allocation of statics by threads
-
-		public ulong Timestamp;
-		public ulong ObjectPtr; //TODO: verify this; from callstack it does look like static object ref, but who knows
-		public uint Size;
-
-		public override void LoadFrom( BinaryReader inputStream ) {
-			Timestamp = inputStream.ReadUInt64();
-			ObjectPtr = inputStream.ReadUInt64();
-			Size = inputStream.ReadUInt32();
-		}
-	}
-
-	enum HeapTag {
-		cFileSignature = 0x4EABB055,
-		cFileVersion = 3,
-
-		cTagNone = 0,
-
-		cTagType,
-		cTagMethod,
-		cTagBackTrace,
-		cTagGarbageCollect,
-		cTagResize,
-		cTagMonoObjectNew,
-		cTagMonoObjectSizeChange,
-		cTagMonoObjectGc,
-		cTagHeapSize,
-		cTagHeapMemoryStart,
-		cTagHeapMemoryEnd,
-		cTagHeapMemorySection,
-		cTagHeapMemorySectionBlock,
-		cTagHeapMemoryRoots,
-		cTagHeapMemoryThreads,
-		cTagBoehmAlloc,
-		cTagBoehmFree,
-		cTagMonoVTable,
-		cTagMonoClassStatics,
-		cTagMonoThreadTableResize,
-		cTagMonoThreadStatics,
-		cTagBackTraceTypeLink,
-		cTagBoehmAllocStacktrace,
-
-		cTagEos = byte.MaxValue,
-
-		cTagCustomEvent = cTagEos - 1,
-		cTagAppResignActive = cTagEos - 2,
-		cTagAppBecomeActive = cTagEos - 3,
-		cTagNewFrame = cTagEos - 4,
-		cTagAppMemoryStats = cTagEos - 5,
-	};
-
-	class HeapTagParser {
-
-		private Stream _inputStream;
-		private List<HeapDescriptor> _heapDescriptors;
-		private List<CustomEvent> _heapCustomEvents;
-		private List<GarbageCollection> _garbageCollectionEvents;
-
-		public GarbageCollection TargetGcEvent { get; private set; }
-
-		public HeapTagParser( Stream inputStream ) {
-
-			_inputStream = inputStream;
-		}
-
-		public void ParseHeapDump() {
-
-			_heapDescriptors = new List<HeapDescriptor>();
-			_heapCustomEvents = new List<CustomEvent>();
-			_garbageCollectionEvents = new List<GarbageCollection>();
-
-			var binaryReader = new BinaryReader( _inputStream, Encoding.UTF8 );
-			var serializer = JsonSerializer.Create();
-
-			var writerStats = new FileWriterStats();
-			writerStats.LoadFrom( binaryReader );
-
-			_heapDescriptors.Add( writerStats );
-
-			Console.WriteLine( JsonConvert.SerializeObject( writerStats ) );
-
-			var dumpStats = new HeapDumpStats();
-			dumpStats.LoadFrom( binaryReader );
-
-			_heapDescriptors.Add( dumpStats );
-
-			Console.WriteLine( JsonConvert.SerializeObject( dumpStats ) );
-
-			var lastTag = HeapTag.cTagNone;
-
-			var isEos = false;
-			
-			while ( binaryReader.BaseStream.Position != binaryReader.BaseStream.Length && !isEos ) {
-
-				var tag = (HeapTag)_inputStream.ReadByte();
-				var descriptor = default( HeapDescriptor );
-
-				switch ( tag ) {
-
-					case HeapTag.cTagHeapMemoryStart:
-						descriptor = new HeapMemoryStart();
-						break;
-
-					case HeapTag.cTagType:
-						descriptor = new MonoClass();
-						break;
-
-					case HeapTag.cTagBoehmAlloc:
-						descriptor = new BoehmAllocation();
-						break;
-
-					case HeapTag.cTagBoehmAllocStacktrace:
-						descriptor = new BoehmAllocationStacktrace();
-						break;
-
-					case HeapTag.cTagGarbageCollect:
-						var gcEvent = new GarbageCollection();
-						_garbageCollectionEvents.Add( gcEvent );
-						descriptor = gcEvent;
-						break;
-
-					case HeapTag.cTagHeapSize:
-						descriptor = new HeapSizeStats();
-						break;
-
-					case HeapTag.cTagMonoVTable:
-						descriptor = new MonoVTableCreate();
-						break;
-
-					case HeapTag.cTagBackTrace:
-						descriptor = new BackTrace();
-						break;
-
-					case HeapTag.cTagBackTraceTypeLink:
-						descriptor = new BackTraceTypeLink();
-						break;
-
-					case HeapTag.cTagMonoObjectNew:
-						descriptor = new MonoObjectNew();
-						break;
-
-					case HeapTag.cTagMethod:
-						descriptor = new MonoMethod();
-						break;
-
-					case HeapTag.cTagMonoObjectGc:
-						descriptor = new MonoObjectGarbageCollected();
-						break;
-
-					case HeapTag.cTagResize:
-						descriptor = new MonoHeapResize();
-						break;
-
-					case HeapTag.cTagMonoObjectSizeChange:
-						descriptor = new MonoObjectResize();
-						break;
-
-					case HeapTag.cTagCustomEvent:
-						var customEvent = new CustomEvent();
-						_heapCustomEvents.Add( customEvent );
-						descriptor = customEvent;
-						break;
-
-					case HeapTag.cTagMonoClassStatics:
-						descriptor = new MonoStaticClassAllocation();
-						break;
-
-					case HeapTag.cTagMonoThreadTableResize:
-						descriptor = new MonoThreadTableResize();
-						break;
-
-					case HeapTag.cTagMonoThreadStatics:
-						descriptor = new MonoThreadStaticClassAllocation();
-						break;
-
-					case HeapTag.cTagEos:
-						Console.WriteLine( "End of stream" );
-						isEos = true;
-						break;
-
-					default:
-						Console.WriteLine( "Previous tag: " + lastTag );
-						Console.WriteLine( "Tag " + tag + " unsupported; halting" );
-						return;
-				}
-
-				try {
-					if ( !isEos && descriptor != null ) {
-
-						descriptor.LoadFrom( binaryReader );
-
-						_heapDescriptors.Add( descriptor );
-					}
-
-					lastTag = tag;
-				} catch (Exception e){
-
-					Console.WriteLine( "Previous tag: " + lastTag );
-					Console.WriteLine( "Current tag: " + tag );
-					Console.WriteLine( e );
-
-				}
-			}
-
-			//TargetGcEvent = _garbageCollectionEvents[_garbageCollectionEvents.Count - 8];
-			//Console.WriteLine( TargetGcEvent.Timestamp );
-		}
-
-		public List<HeapDescriptor> GetHeapDescriptors() {
-
-			return _heapDescriptors;
-		}
-
-		public IList<CustomEvent> GetCustomEvents() {
-
-			return _heapCustomEvents;
-		}
-	}
-
-	class Program {
-
-		private static CustomEvent SelectTargetCustomEvent(IList<CustomEvent> customEvents) {
-
-			if (customEvents.Count == 0) {
-				return null;
-			}
-
-			var resultIndex = -1;
-
-			Console.WriteLine( "Select event to replay heap to: " );
-
-			while (resultIndex < 0 || resultIndex >= customEvents.Count) {
-
-				for (var i = 0; i < customEvents.Count; ++i ) {
-
-					Console.WriteLine( i.ToString() + " " + customEvents[i].EventName );
-				}
-
-				int.TryParse( Console.ReadLine(), out resultIndex );
-			}
-
-			return customEvents[resultIndex];
-		}
-
-		private static void DumpAllocationByType( HeapTagParser heapTagParser, MonoHeapState monoHeapState, string dumpFilePath ) {
-
-			var fromTag = SelectTargetCustomEvent( heapTagParser.GetCustomEvents() );
-			var toTag = SelectTargetCustomEvent( heapTagParser.GetCustomEvents() );
-
-			//var monoHeapState = new MonoHeapState();
-			monoHeapState.ResetLiveObjects();
-			var didHitBeginning = false;
-			foreach(var each in heapTagParser.GetHeapDescriptors() ) {
-
-				if ( !didHitBeginning ) {
-
-					didHitBeginning = each == fromTag;
-
-					continue;
-				}
-
-				if (each == toTag) {
-
-					break;
-				}
-
-				if ( didHitBeginning ) {
-
-					each.ApplyTo( monoHeapState );
-				}
-			}
-			
-			using ( var outStream = new FileStream( dumpFilePath + ".AllocationByBacktrace.txt", FileMode.Create ) ) {
-
-				var streamWriter = new StreamWriter( outStream );
-
-				monoHeapState.DumpMethodAllocationStatsByBacktrace( streamWriter );
-
-				streamWriter.Close();
-			}
-
-			using ( var outStream = new FileStream( dumpFilePath + ".AllocationByType.txt", FileMode.Create ) ) {
-
-				var streamWriter = new StreamWriter( outStream );
-
-				monoHeapState.DumpMethodAllocationStatsByType( streamWriter );
-
-				streamWriter.Close();
-			}
-
-			Console.WriteLine( "Select types to dump allocation stats for: " );
-			var typeNames = Console.ReadLine();
-
-			foreach ( var each in typeNames.Split( ',' ) ) {
-
-				var fileName = each.Replace( "*", "_" );
-				using ( var outStream = new FileStream( dumpFilePath + ".AllocationByType." + fileName + ".txt", FileMode.Create ) ) {
-
-					var streamWriter = new StreamWriter( outStream );
-
-					monoHeapState.DumpMethodAllocationStatsByType( streamWriter, each );
-
-					streamWriter.Close();
-				}
-			}
-		}
-
-		static void Main( string[] args ) {
-
-			using ( var stream = new FileStream( args[0], FileMode.Open ) ) {
-
-				var heapTagParser = new HeapTagParser( stream );
-
-				heapTagParser.ParseHeapDump();
-
-
-				var monoHeapState = new MonoHeapState();
-
-				var targetCustomEvent = SelectTargetCustomEvent( heapTagParser.GetCustomEvents() );
-
-				foreach ( var each in heapTagParser.GetHeapDescriptors() ) {
-
-					if ( each == targetCustomEvent || each == heapTagParser.TargetGcEvent ) {
-
-						Console.WriteLine( "Hit " + each.ToString() );
-
-						break;
-					}
-
-					each.ApplyTo( monoHeapState );
-				}
-
-				monoHeapState.PostInitialize();
-
-				using ( var outStream = new FileStream( args[0] + ".out.txt", FileMode.Create ) ) {
-
-					var streamWriter = new StreamWriter( outStream );
-					var writer = new JsonTextWriter( streamWriter );
-
-					monoHeapState.DumpMethodAllocationStats( streamWriter );
-
-					//var serializer = JsonSerializer.Create();
-
-					//foreach ( var each in heapTagParser.GetHeapDescriptors() ) {
-
-					//	writer.WriteComment( each.GetType().Name );
-					//	serializer.Serialize( writer, each );
-					//	writer.WriteRaw( "\n" );
-					//}
-
-					writer.Close();
-				}
-
-				DumpAllocationByType(heapTagParser, monoHeapState, args[0]);
-
-				//using ( var outStream = new FileStream( args[0] + ".heap.out.txt", FileMode.Create ) ) {
-
-				//	var streamWriter = new StreamWriter( outStream );
-				//	var writer = new JsonTextWriter( streamWriter );
-				//	var serializer = JsonSerializer.Create();
-
-				//	var monoHeapState = new MonoHeapState();
-				//	foreach(var each in heapTagParser.GetHeapDescriptors()) {
-
-				//		if (each is CustomEvent ) {
-				//			break;
-				//		}
-
-				//		each.ApplyTo( monoHeapState );
-				//	}
-
-				//	var liveObjects = monoHeapState.GetLiveObjects();
-
-				//	foreach ( var each in liveObjects ) {
-
-				//		//writer.WriteComment( each.GetType().Name );
-				//		serializer.Serialize( writer, each );
-				//		writer.WriteRaw( "\n" );
-				//	}
-
-				//	writer.Close();
-				//}
-
-				using ( var outStream = new FileStream( args[0] + ".heap.graph.gdf", FileMode.Create ) ) {
-
-					var streamWriter = new StreamWriter( outStream );
-					///var writer = new TextWriter( streamWriter );
-					var serializer = JsonSerializer.Create();
-
-
-
-					//foreach (var each in monoHeapState.GetLiveObjectsNew()) {
-
-					//}
-
-					var gdfGenerator = new GdfGenerator();
-					//var liveObjects = monoHeapState.GetLiveObjects();
-
-					//foreach ( var each in liveObjects ) {
-
-					//	if ( string.IsNullOrEmpty( each.Item1 ) || string.IsNullOrEmpty( each.Item2 ) ) { continue; }
-
-					//	var color = "black";
-					//	if ( each.Item2 == "Mono Static Reference" ) {
-
-					//		color = "red";
-					//	}
-
-					//	var from = gdfGenerator.AddNode( each.Item1, "white", "None" );
-					//	var to = gdfGenerator.AddNode( each.Item2, "white", "None" );
-
-					//	gdfGenerator.AddEdge( to, from, color, string.Empty );
-					//}
-
-					Console.WriteLine( "Total live objects size (MB): " + monoHeapState.GetTotalLiveObjectsSizeMb() );
-
-					foreach ( var each in monoHeapState.GetObjectReferencesWithSize() ) {
-
-						var sizeMb = ((float)each.Item3) / ( 1024 * 1024 );
-						if ( sizeMb < 0.1f ) {
-
-							continue;
-						}
-
-						//if ( string.IsNullOrEmpty( each.Item1 ) || string.IsNullOrEmpty( each.Item2 ) ) { continue; }
-
-						//var color = "black";
-						//if ( each.Item2 == "Mono Static Reference" ) {
-
-						//	color = "red";
-						//}
-
-						var monoClass = gdfGenerator.AddNode( each.Item1, "white", "None" );
-						var monoMethod = gdfGenerator.AddNode( each.Item2, "white", "None" );
-
-						gdfGenerator.AddEdge( monoClass, monoMethod, "black", sizeMb.ToString().Replace(",", ".") );
-					}
-
-					gdfGenerator.Write( streamWriter );
-
-					//foreach ( var each in liveObjects ) {
-
-					//	//writer.WriteComment( each.GetType().Name );
-					//	serializer.Serialize( writer, each );
-					//	writer.WriteRaw( "\n" );
-					//}
-
-					streamWriter.Close();
-				}
-			}
-		}
-	}
+using System.Threading;
+
+namespace ConsoleApplication1
+{
+    public class BinaryReaderDryWrapper
+    {
+        public readonly BinaryReader Reader;
+
+        public bool IsDryMode;
+
+        public BinaryReaderDryWrapper(BinaryReader reader)
+        {
+            Reader = reader;
+        }
+
+        public uint ReadUInt32()
+        {
+            return IsDryMode ? FastForwardReader<UInt32>(sizeof(UInt32)) : Reader.ReadUInt32();
+        }
+
+        public int ReadInt32()
+        {
+            return IsDryMode ? FastForwardReader<Int32>(sizeof(Int32)) : Reader.ReadInt32();
+        }
+
+        public string ReadString(char[] buffer)
+        {
+            var stringLength = Reader.ReadUInt32();
+
+            if (IsDryMode)
+            {
+                FastForwardReader<byte>((int) stringLength);
+                return string.Empty;
+            }
+
+            Reader.Read(buffer, 0, (int) stringLength);
+
+            return new string(buffer, 0, (int) stringLength);
+        }
+
+//        public void Read(char[] charBuffer, int i, int stringLength)
+//        {
+//            throw new NotImplementedException();
+//        }
+
+        public ulong ReadUInt64()
+        {
+            return IsDryMode ? FastForwardReader<UInt64>(sizeof(UInt64)) : Reader.ReadUInt64();
+        }
+
+        public byte ReadByte()
+        {
+            return IsDryMode ? FastForwardReader<byte>(sizeof(byte)) : Reader.ReadByte();
+        }
+
+        public bool ReadBoolean()
+        {
+            return IsDryMode ? FastForwardReader<Boolean>(sizeof(Boolean)) : Reader.ReadBoolean();
+        }
+
+//        public byte[] ReadRawByteArray()
+//        {
+////            return IsDryMode ? FastForwardReader<byte[]>(sizeof(int)) : BinaryReader.ReadBytes();
+//        }
+
+        public byte[] ReadBytes(int size)
+        {
+            return IsDryMode ? FastForwardReader<byte[]>(sizeof(int)) : Reader.ReadBytes(size);
+        }
+
+        public int ReadInt16()
+        {
+            return IsDryMode ? FastForwardReader<Int16>(sizeof(Int16)) : Reader.ReadInt16();
+        }
+
+        private T FastForwardReader<T>(int amount)
+        {
+            Reader.BaseStream.Seek(amount, SeekOrigin.Current);
+
+            return default(T);
+        }
+    }
+
+    public abstract class HeapDescriptor
+    {
+        protected static char[] CharBuffer = new char[1024];
+
+        public abstract void LoadFrom(BinaryReaderDryWrapper reader);
+
+        public virtual void DryLoadFrom(BinaryReaderDryWrapper reader)
+        {
+            reader.IsDryMode = true;
+
+            LoadFrom(reader);
+
+            reader.IsDryMode = false;
+        }
+
+        public virtual void ApplyTo(MonoHeapState monoHeapState)
+        {
+        }
+    }
+
+    [Serializable]
+    public class FileWriterStats : HeapDescriptor
+    {
+        public uint FileSignature;
+        public int FileVersion;
+        public string FileLabel;
+        public ulong Timestamp;
+        public byte PointerSize;
+        public byte PlatformId;
+        public bool IsLogFullyWritten;
+
+        public override void LoadFrom(BinaryReaderDryWrapper reader)
+        {
+            FileSignature = reader.ReadUInt32();
+            FileVersion = reader.ReadInt32();
+
+            FileLabel = reader.ReadString(CharBuffer);
+
+            Timestamp = reader.ReadUInt64();
+            PointerSize = reader.ReadByte();
+            PlatformId = reader.ReadByte();
+
+            IsLogFullyWritten = reader.ReadBoolean();
+        }
+    }
+
+    public class HeapDumpStats : HeapDescriptor
+    {
+        public uint TotalGcCount;
+        public uint TotalTypeCount;
+        public uint TotalMethodCount;
+        public uint TotalBacktraceCount;
+        public uint TotalResizeCount;
+
+        public ulong TotalFramesCount;
+        public ulong TotalObjectNewCount;
+        public ulong TotalObjectResizesCount;
+        public ulong TotalObjectGcsCount;
+        public ulong TotalBoehmNewCount;
+        public ulong TotalBoehmFreeCount;
+
+        public ulong TotalAllocatedBytes;
+        public uint TotalAllocatedObjects;
+
+        public override void LoadFrom(BinaryReaderDryWrapper reader)
+        {
+            TotalGcCount = reader.ReadUInt32();
+            TotalTypeCount = reader.ReadUInt32();
+            TotalMethodCount = reader.ReadUInt32();
+            TotalBacktraceCount = reader.ReadUInt32();
+            TotalResizeCount = reader.ReadUInt32();
+
+            TotalFramesCount = reader.ReadUInt64();
+            TotalObjectNewCount = reader.ReadUInt64();
+            TotalObjectResizesCount = reader.ReadUInt64();
+            TotalObjectGcsCount = reader.ReadUInt64();
+            TotalBoehmNewCount = reader.ReadUInt64();
+            TotalBoehmFreeCount = reader.ReadUInt64();
+
+            TotalAllocatedBytes = reader.ReadUInt64();
+            TotalAllocatedObjects = reader.ReadUInt32();
+        }
+    }
+
+    [Serializable]
+    public class HeapMemory : HeapDescriptor
+    {
+        public uint MemoryTotalHeapBytes;
+        public uint MemoryTotalBytesWritten;
+
+        public HeapMemorySection[] HeapMemorySections;
+
+        public HeapMemoryRootSet[] HeapMemoryStaticRoots;
+
+        public HeapMemoryThread[] HeapMemoryThreads;
+
+        public override void LoadFrom(BinaryReaderDryWrapper reader)
+        {
+            var writtenSectionsCount = reader.ReadUInt32();
+
+            MemoryTotalHeapBytes = reader.ReadUInt32();
+            MemoryTotalBytesWritten = reader.ReadUInt32();
+
+            var memoryTotalRoots = reader.ReadUInt32();
+
+            var memoryTotalThreads = reader.ReadUInt32();
+
+            HeapMemorySections = new HeapMemorySection[writtenSectionsCount];
+
+            for (var i = 0; i < writtenSectionsCount; ++i)
+            {
+                EnsureTag((HeapTag) reader.ReadByte(), HeapTag.cTagHeapMemorySection);
+
+                HeapMemorySections[i] = new HeapMemorySection();
+                HeapMemorySections[i].LoadFrom(reader);
+            }
+
+            EnsureTag((HeapTag) reader.ReadByte(), HeapTag.cTagHeapMemoryRoots);
+
+            HeapMemoryStaticRoots = new HeapMemoryRootSet[memoryTotalRoots];
+
+            for (var i = 0; i < memoryTotalRoots; ++i)
+            {
+                HeapMemoryStaticRoots[i] = new HeapMemoryRootSet();
+                HeapMemoryStaticRoots[i].LoadFrom(reader);
+            }
+
+            EnsureTag((HeapTag) reader.ReadByte(), HeapTag.cTagHeapMemoryThreads);
+
+            HeapMemoryThreads = new HeapMemoryThread[memoryTotalThreads];
+
+            for (var i = 0; i < memoryTotalThreads; ++i)
+            {
+                HeapMemoryThreads[i] = new HeapMemoryThread();
+                HeapMemoryThreads[i].LoadFrom(reader);
+            }
+
+            EnsureTag((HeapTag) reader.ReadByte(), HeapTag.cTagHeapMemoryEnd);
+        }
+
+        public override void DryLoadFrom(BinaryReaderDryWrapper reader)
+        {
+            LoadFrom(reader);
+        }
+
+        private static void EnsureTag(HeapTag currentTag, HeapTag expectedTag)
+        {
+            if (currentTag != expectedTag)
+            {
+                throw new Exception(
+                    string.Format("Heap dump read error: got {0} expected {1}", currentTag, expectedTag));
+            }
+        }
+    }
+
+    [Serializable]
+    public class HeapMemorySection : HeapDescriptor
+    {
+        public ulong StartPtr;
+        public ulong EndPtr;
+
+        public HeapSectionBlock[] HeapSectionBlocks;
+
+        public override void LoadFrom(BinaryReaderDryWrapper reader)
+        {
+            StartPtr = reader.ReadUInt64();
+            EndPtr = reader.ReadUInt64();
+            var blocksWrittenCount = reader.ReadUInt32();
+
+            HeapSectionBlocks = new HeapSectionBlock[blocksWrittenCount];
+            for (var i = 0; i < blocksWrittenCount; ++i)
+            {
+                EnsureTag((HeapTag) reader.ReadByte(), HeapTag.cTagHeapMemorySectionBlock);
+
+                HeapSectionBlocks[i] = new HeapSectionBlock();
+                HeapSectionBlocks[i].LoadFrom(reader);
+            }
+        }
+
+        private static void EnsureTag(HeapTag currentTag, HeapTag expectedTag)
+        {
+            if (currentTag != expectedTag)
+            {
+                throw new Exception(
+                    string.Format("Heap dump read error: got {0} expected {1}", currentTag, expectedTag));
+            }
+        }
+    }
+
+    [Serializable]
+    public class HeapSectionBlock : HeapDescriptor
+    {
+        public ulong StartPtr;
+        public uint Size;
+        public uint ObjSize;
+        public byte BlockKind;
+        public bool IsFree;
+        public ulong[] ObjectPtrs;
+
+        public override void LoadFrom(BinaryReaderDryWrapper reader)
+        {
+            StartPtr = reader.ReadUInt64();
+            Size = reader.ReadUInt32();
+            ObjSize = reader.ReadUInt32();
+            BlockKind = reader.ReadByte();
+            IsFree = reader.ReadBoolean();
+
+            if (!IsFree)
+            {
+                var ptrSize = 4;
+                var ptrCount = Size / ptrSize;
+                ObjectPtrs = new ulong[ptrCount];
+
+                for (var i = 0; i < ptrCount; ++i)
+                {
+                    ObjectPtrs[i] = reader.ReadUInt32();
+                }
+            }
+        }
+    }
+
+    public class HeapMemoryRootSet : HeapDescriptor
+    {
+        public ulong StartPtr;
+        public ulong EndPtr;
+        public uint Size;
+        public ulong[] ObjectPtrs; // TODO: check what actually lies in root sets
+
+        public override void LoadFrom(BinaryReaderDryWrapper reader)
+        {
+            StartPtr = reader.ReadUInt64();
+            EndPtr = reader.ReadUInt64();
+            Size = reader.ReadUInt32();
+
+            var ptrSize = 4;
+            var ptrCount = Size / ptrSize;
+            ObjectPtrs = new ulong[ptrCount];
+
+            for (var i = 0; i < ptrCount; ++i)
+            {
+                ObjectPtrs[i] = reader.ReadUInt32();
+            }
+        }
+    }
+
+    public class HeapMemoryThread : HeapDescriptor
+    {
+        public int ThreadId;
+        public ulong StackPtr;
+        public uint StackSize;
+        public uint RegistersSize;
+
+        public byte[] RawStackMemory;
+        public byte[] RawRegistersMemory;
+
+        public override void LoadFrom(BinaryReaderDryWrapper reader)
+        {
+            ThreadId = reader.ReadInt32();
+            StackPtr = reader.ReadUInt64();
+            StackSize = reader.ReadUInt32();
+            RegistersSize = reader.ReadUInt32();
+
+            RawStackMemory = reader.ReadBytes((int) StackSize);
+            RawRegistersMemory = reader.ReadBytes((int) RegistersSize);
+        }
+
+        //Disable dry run since length reads aren't sequential with byte arrays reads
+        public override void DryLoadFrom(BinaryReaderDryWrapper reader)
+        {
+            LoadFrom(reader);
+        }
+    }
+
+    public class BoehmAllocation : HeapDescriptor
+    {
+        public ulong Timestamp;
+        public ulong AllocatedObjectPtr;
+        public uint Size;
+        public uint StacktraceHash;
+
+        public override void LoadFrom(BinaryReaderDryWrapper reader)
+        {
+            Timestamp = reader.ReadUInt64();
+            AllocatedObjectPtr = reader.ReadUInt64();
+            Size = reader.ReadUInt32();
+            StacktraceHash = reader.ReadUInt32();
+        }
+    }
+
+    public class BoehmAllocationStacktrace : HeapDescriptor
+    {
+        public uint StacktraceHash;
+        public string StacktraceBuffer;
+
+        public override void LoadFrom(BinaryReaderDryWrapper reader)
+        {
+            StacktraceHash = reader.ReadUInt32();
+            StacktraceBuffer = reader.ReadString(CharBuffer);
+        }
+    }
+
+    public class GarbageCollectionAccountant : HeapDescriptor
+    {
+        public ulong BackTracePtr;
+        public ulong ClassPtr;
+        public uint NumberOfAllocatedObjects;
+        public ulong NunberOfAllocatedBytes;
+        public uint AllocatedTotalAge;
+        public uint AllocatedTotalWeight;
+        public uint NumberOfLiveObjects;
+        public uint NumberOfLiveBytes;
+        public uint LiveTotalAge;
+        public uint LiveTotalWeight;
+
+        public override void LoadFrom(BinaryReaderDryWrapper reader)
+        {
+            BackTracePtr = reader.ReadUInt64();
+            ClassPtr = reader.ReadUInt64();
+            NumberOfAllocatedObjects = reader.ReadUInt32();
+            NunberOfAllocatedBytes = reader.ReadUInt64();
+            AllocatedTotalAge = reader.ReadUInt32();
+            AllocatedTotalWeight = reader.ReadUInt32();
+            NumberOfLiveObjects = reader.ReadUInt32();
+            NumberOfLiveBytes = reader.ReadUInt32();
+            LiveTotalAge = reader.ReadUInt32();
+            LiveTotalWeight = reader.ReadUInt32();
+        }
+    }
+
+    public class MonoGarbageCollect : HeapDescriptor
+    {
+        public int TotalGcCount;
+        public ulong Timestamp;
+        public ulong TotalLiveBytesBefore;
+        public uint TotalLiveObjectsBefore;
+        public ulong TotalLiveBytesAfter;
+        public uint TotalLiveObjectsAfter;
+        public GarbageCollectionAccountant[] Accountants;
+
+        public override void LoadFrom(BinaryReaderDryWrapper reader)
+        {
+            TotalGcCount = reader.ReadInt32();
+            Timestamp = reader.ReadUInt64();
+            TotalLiveBytesBefore = reader.ReadUInt64();
+            TotalLiveObjectsBefore = reader.ReadUInt32();
+
+            var numberOfAccountants = reader.ReadUInt32();
+
+            Accountants = new GarbageCollectionAccountant[numberOfAccountants];
+            for (var i = 0; i < numberOfAccountants; ++i)
+            {
+                Accountants[i] = new GarbageCollectionAccountant();
+                Accountants[i].LoadFrom(reader);
+            }
+
+            TotalLiveBytesAfter = reader.ReadUInt64();
+            TotalLiveObjectsAfter = reader.ReadUInt32();
+        }
+
+        public override void ApplyTo(MonoHeapState monoHeapState)
+        {
+            monoHeapState.GarbageCollections.Add(this);
+        }
+
+        public override void DryLoadFrom(BinaryReaderDryWrapper reader)
+        {
+            LoadFrom(reader);
+        }
+    }
+
+    public class MonoHeapSize : HeapDescriptor
+    {
+        public ulong HeapSize;
+        public ulong HeapUsedSize;
+
+        public override void LoadFrom(BinaryReaderDryWrapper reader)
+        {
+            HeapSize = reader.ReadUInt64();
+            HeapUsedSize = reader.ReadUInt64();
+        }
+    }
+
+    public class MonoType : HeapDescriptor
+    {
+        public ulong ClassPtr;
+        public string Name;
+        public byte Flags;
+        public uint Size;
+        public uint MinAlignment;
+
+        public override void LoadFrom(BinaryReaderDryWrapper reader)
+        {
+            ClassPtr = reader.ReadUInt64();
+
+            Name = reader.ReadString(CharBuffer);
+
+            Flags = reader.ReadByte();
+            Size = reader.ReadUInt32();
+            MinAlignment = reader.ReadUInt32();
+        }
+
+        public override void ApplyTo(MonoHeapState monoHeapState)
+        {
+            monoHeapState.PtrClassMapping[ClassPtr] = this;
+        }
+    }
+
+    public class MonoVTable : HeapDescriptor
+    {
+        public ulong Timestamp;
+        public ulong VTablePtr;
+        public ulong ClassPtr;
+
+        public override void LoadFrom(BinaryReaderDryWrapper reader)
+        {
+            Timestamp = reader.ReadUInt64();
+            VTablePtr = reader.ReadUInt64();
+            ClassPtr = reader.ReadUInt64();
+        }
+    }
+
+    public class BackTraceStackFrame : HeapDescriptor
+    {
+        public ulong MethodPtr;
+        public uint DebugLine;
+
+        public override void LoadFrom(BinaryReaderDryWrapper reader)
+        {
+            MethodPtr = reader.ReadUInt64();
+            DebugLine = reader.ReadUInt32();
+        }
+    }
+
+    public class MonoBackTrace : HeapDescriptor
+    {
+        public ulong BackTracePtr;
+        public ulong Timestamp;
+
+        public BackTraceStackFrame[] StackFrames;
+
+        public override void LoadFrom(BinaryReaderDryWrapper reader)
+        {
+            BackTracePtr = reader.ReadUInt64();
+            Timestamp = reader.ReadUInt64();
+
+            var stackFrameCount = reader.ReadInt16();
+
+            StackFrames = new BackTraceStackFrame[stackFrameCount];
+            for (var i = 0; i < stackFrameCount; ++i)
+            {
+                StackFrames[i] = new BackTraceStackFrame();
+                StackFrames[i].LoadFrom(reader);
+            }
+        }
+
+        public override void ApplyTo(MonoHeapState monoHeapState)
+        {
+            monoHeapState.PtrBackTraceMapping[BackTracePtr] = this;
+        }
+    }
+
+    class BackTraceTypeLink : HeapDescriptor
+    {
+        public ulong BackTracePtr;
+        public ulong ClassPtr;
+
+        public override void LoadFrom(BinaryReaderDryWrapper reader)
+        {
+            BackTracePtr = reader.ReadUInt64();
+            ClassPtr = reader.ReadUInt64();
+        }
+
+        public override void ApplyTo(MonoHeapState monoHeapState)
+        {
+            monoHeapState.PtrBacktraceToPtrClass[BackTracePtr] = ClassPtr;
+        }
+    }
+
+    public class MonoObjectNew : HeapDescriptor
+    {
+        public ulong Timestamp;
+        public ulong BackTracePtr;
+        public ulong ClassPtr;
+        public ulong ObjectPtr;
+        public uint Size;
+
+        public override void LoadFrom(BinaryReaderDryWrapper reader)
+        {
+            Timestamp = reader.ReadUInt64();
+            BackTracePtr = reader.ReadUInt64();
+            ClassPtr = reader.ReadUInt64();
+            ObjectPtr = reader.ReadUInt64();
+            Size = reader.ReadUInt32();
+        }
+
+        public override void ApplyTo(MonoHeapState monoHeapState)
+        {
+            monoHeapState.AddLiveObject(this);
+        }
+    }
+
+    public class MonoMethod : HeapDescriptor
+    {
+        public ulong MethodPtr;
+        public ulong ClassPtr;
+        public string Name;
+        public string SourceFileName;
+
+        public override void LoadFrom(BinaryReaderDryWrapper reader)
+        {
+            MethodPtr = reader.ReadUInt64();
+            ClassPtr = reader.ReadUInt64();
+
+            Name = reader.ReadString(CharBuffer);
+            SourceFileName = reader.ReadString(CharBuffer);
+        }
+
+        public override void ApplyTo(MonoHeapState monoHeapState)
+        {
+            monoHeapState.PtrMethodMapping[MethodPtr] = this;
+        }
+    }
+
+    public class MonoObjectGarbageCollected : HeapDescriptor
+    {
+        public ulong BackTracePtr;
+        public ulong ClassPtr;
+        public ulong ObjectPtr;
+
+        public override void LoadFrom(BinaryReaderDryWrapper reader)
+        {
+            BackTracePtr = reader.ReadUInt64();
+            ClassPtr = reader.ReadUInt64();
+            ObjectPtr = reader.ReadUInt64();
+        }
+
+        public override void ApplyTo(MonoHeapState monoHeapState)
+        {
+            monoHeapState.RemoveLiveObject(this);
+            monoHeapState.GarbageCollectedObjects.Add(this);
+        }
+    }
+
+    class MonoHeapResize : HeapDescriptor
+    {
+        public ulong Timestamp;
+        public ulong NewSize;
+        public ulong TotalLiveBytes;
+        public uint TotalLiveObjects;
+
+        public override void LoadFrom(BinaryReaderDryWrapper reader)
+        {
+            Timestamp = reader.ReadUInt64();
+            NewSize = reader.ReadUInt64();
+            TotalLiveBytes = reader.ReadUInt64();
+            TotalLiveObjects = reader.ReadUInt32();
+        }
+    }
+
+    class MonoObjectResize : HeapDescriptor
+    {
+        public ulong BackTracePtr;
+        public ulong ClassPtr;
+        public ulong ObjectPtr;
+        public uint Size;
+
+        public override void LoadFrom(BinaryReaderDryWrapper reader)
+        {
+            BackTracePtr = reader.ReadUInt64();
+            ClassPtr = reader.ReadUInt64();
+            ObjectPtr = reader.ReadUInt64();
+            Size = reader.ReadUInt32();
+        }
+    }
+
+    public class CustomEvent : HeapDescriptor
+    {
+        public ulong Timestamp;
+        public string EventName;
+
+        public CustomEvent(string eventName)
+        {
+            Timestamp = 0;
+            EventName = eventName;
+        }
+
+        public CustomEvent()
+        {
+        }
+
+        public override void LoadFrom(BinaryReaderDryWrapper reader)
+        {
+            Timestamp = reader.ReadUInt64();
+            EventName = reader.ReadString(CharBuffer);
+        }
+    }
+
+    public class MonoStaticClassAllocation : HeapDescriptor
+    {
+        public ulong Timestamp;
+        public ulong ClassPtr;
+        public ulong ObjectPtr; //TODO: verify this; from callstack it does look like static object ref, but who knows
+        public uint Size;
+
+        public override void LoadFrom(BinaryReaderDryWrapper reader)
+        {
+            Timestamp = reader.ReadUInt64();
+            ClassPtr = reader.ReadUInt64();
+            ObjectPtr = reader.ReadUInt64();
+            Size = reader.ReadUInt32();
+        }
+
+        public override void ApplyTo(MonoHeapState monoHeapState)
+        {
+            monoHeapState.AddLiveObject(this);
+        }
+    }
+
+    public class MonoThreadTableResize : HeapDescriptor
+    {
+        public ulong Timestamp;
+        public ulong TablePtr;
+        public uint TableCount;
+        public uint TableSize;
+
+        public override void LoadFrom(BinaryReaderDryWrapper reader)
+        {
+            Timestamp = reader.ReadUInt64();
+            TablePtr = reader.ReadUInt64();
+            TableCount = reader.ReadUInt32();
+            TableSize = reader.ReadUInt32();
+        }
+    }
+
+    public class MonoThreadStaticClassAllocation : HeapDescriptor
+    {
+        //TODO: verify that this is indeed allocation of statics by threads
+
+        public ulong Timestamp;
+        public ulong ObjectPtr; //TODO: verify this; from callstack it does look like static object ref, but who knows
+        public uint Size;
+
+        public override void LoadFrom(BinaryReaderDryWrapper reader)
+        {
+            Timestamp = reader.ReadUInt64();
+            ObjectPtr = reader.ReadUInt64();
+            Size = reader.ReadUInt32();
+        }
+    }
+
+    public enum HeapTag
+    {
+//        cFileSignature = 0x4EABB055,
+        cFileVersion = 3,
+
+        cTagNone = 0,
+
+        MonoType,
+        MonoMethod,
+        MonoBackTrace,
+
+        MonoGarbageCollect,
+        MonoHeapResize,
+        MonoObjectNew,
+        MonoObjectResize,
+        MonoObjectGarbageCollected,
+        MonoHeapSize,
+        HeapMemory,
+        cTagHeapMemoryEnd,
+        cTagHeapMemorySection,
+        cTagHeapMemorySectionBlock,
+        cTagHeapMemoryRoots,
+        cTagHeapMemoryThreads,
+        BoehmAllocation,
+        cTagBoehmFree,
+        MonoVTable,
+        MonoStaticClassAllocation,
+        MonoThreadTableResize,
+        MonoThreadStaticClassAllocation,
+        BackTraceTypeLink,
+        BoehmAllocationStacktrace,
+
+        cTagEos = byte.MaxValue,
+
+        CustomEvent = cTagEos - 1,
+        cTagAppResignActive = cTagEos - 2,
+        cTagAppBecomeActive = cTagEos - 3,
+        cTagNewFrame = cTagEos - 4,
+        cTagAppMemoryStats = cTagEos - 5,
+    };
+
+    class HeapTagParser
+    {
+        private Stream _inputStream;
+
+        private List<HeapDescriptor> _heapDescriptors;
+
+        private List<CustomEvent> _heapCustomEvents;
+        private List<Tuple<long, CustomEvent>> _heapCustomEventsAndPositions;
+        private List<MonoGarbageCollect> _garbageCollectionEvents;
+
+        private HeapDescriptorInfo _heapDescriptorInfo;
+        private HeapDescriptorFactory _heapDescriptorFactory;
+
+        public MonoHeapState HeapState { get; private set; }
+
+        public HeapTagParser(Stream inputStream)
+        {
+            _inputStream = inputStream;
+
+            _heapDescriptorInfo = new HeapDescriptorInfo();
+            _heapDescriptorInfo.Initialize();
+
+            _heapDescriptorFactory = new HeapDescriptorFactory(_heapDescriptorInfo);
+        }
+
+        public void ParseHeapDump()
+        {
+            _heapDescriptors = new List<HeapDescriptor>();
+            _heapCustomEvents = new List<CustomEvent>();
+            _garbageCollectionEvents = new List<MonoGarbageCollect>();
+
+            var binaryReader = new BinaryReader(_inputStream, Encoding.UTF8);
+            var binaryReaderWrapper = new BinaryReaderDryWrapper(binaryReader);
+
+            var writerStats = new FileWriterStats();
+            writerStats.LoadFrom(binaryReaderWrapper);
+
+            _heapDescriptors.Add(writerStats);
+
+            Console.WriteLine(JsonConvert.SerializeObject(writerStats));
+
+            var dumpStats = new HeapDumpStats();
+            dumpStats.LoadFrom(binaryReaderWrapper);
+
+            _heapDescriptors.Add(dumpStats);
+
+            Console.WriteLine(JsonConvert.SerializeObject(dumpStats));
+
+            foreach (var each in GetHeapDescriptors(binaryReaderWrapper, null))
+            {
+                _heapDescriptors.Add(each.Descriptor);
+
+                switch (each.Tag)
+                {
+                    case HeapTag.MonoGarbageCollect:
+                        _garbageCollectionEvents.Add(each.Descriptor as MonoGarbageCollect);
+                        break;
+
+                    case HeapTag.CustomEvent:
+                        _heapCustomEvents.Add(each.Descriptor as CustomEvent);
+                        break;
+                }
+            }
+        }
+
+        //First pass only reads custom events, new type/class/backtrace definitions
+        public void PerformHeapFirstPass()
+        {
+            _heapDescriptors = new List<HeapDescriptor>();
+            _heapCustomEvents = new List<CustomEvent>();
+            _heapCustomEventsAndPositions = new List<Tuple<long, CustomEvent>>();
+
+            var binaryReader = new BinaryReader(_inputStream, Encoding.UTF8);
+            var binaryReaderWrapper = new BinaryReaderDryWrapper(binaryReader);
+
+            var writerStats = new FileWriterStats();
+            writerStats.LoadFrom(binaryReaderWrapper);
+
+            _heapDescriptors.Add(writerStats);
+
+            Console.WriteLine(JsonConvert.SerializeObject(writerStats));
+
+            var dumpStats = new HeapDumpStats();
+            dumpStats.LoadFrom(binaryReaderWrapper);
+
+            _heapDescriptors.Add(dumpStats);
+
+            Console.WriteLine(JsonConvert.SerializeObject(dumpStats));
+
+            HeapState = new MonoHeapState();
+
+            var dryRunExceptions = new bool[_heapDescriptorFactory.MatchingTypes.Length];
+            dryRunExceptions[(int) HeapTag.CustomEvent] = true;
+            dryRunExceptions[(int) HeapTag.MonoType] = true;
+            dryRunExceptions[(int) HeapTag.MonoMethod] = true;
+            dryRunExceptions[(int) HeapTag.MonoBackTrace] = true;
+            dryRunExceptions[(int) HeapTag.BackTraceTypeLink] = true;
+
+//            {
+//                HeapTag.CustomEvent,
+//                HeapTag.MonoType,
+//                HeapTag.MonoMethod,
+//                HeapTag.MonoBackTrace
+//            };
+
+            var stopwatch = new Stopwatch();
+            stopwatch.Start();
+
+            foreach (var each in GetHeapDescriptors(binaryReaderWrapper, dryRunExceptions))
+            {
+//                _heapDescriptors.Add(each.Item2);
+
+                if (each.Tag == HeapTag.CustomEvent)
+                {
+                    _heapCustomEvents.Add(each.Descriptor as CustomEvent);
+                    _heapCustomEventsAndPositions.Add(new Tuple<long, CustomEvent>(each.Timestamp,
+                        each.Descriptor as CustomEvent));
+                }
+                else
+                {
+                    each.Descriptor.ApplyTo(HeapState);
+                }
+            }
+
+            Console.WriteLine($"First pass took {stopwatch.ElapsedMilliseconds / 1000} seconds");
+
+            HeapState.PostInitialize();
+        }
+
+        public void PerformHeapSecondPass(CustomEvent fromEvent, CustomEvent toEvent)
+        {
+            var position = _heapCustomEventsAndPositions.First(_ => _.Item2.Timestamp == fromEvent.Timestamp).Item1;
+
+            var binaryReader = new BinaryReader(_inputStream, Encoding.UTF8);
+            binaryReader.BaseStream.Position = position;
+
+            var binaryReaderWrapper = new BinaryReaderDryWrapper(binaryReader);
+
+            Console.WriteLine($"From {fromEvent.EventName} to {toEvent.EventName}");
+            Console.WriteLine($"Starting position: {position}; stream length: {binaryReader.BaseStream.Length}");
+
+            foreach (var each in GetHeapDescriptors(binaryReaderWrapper, null))
+            {
+                each.Descriptor.ApplyTo(HeapState);
+
+                if (each.Tag == HeapTag.CustomEvent && (each.Descriptor as CustomEvent).Timestamp == toEvent.Timestamp)
+                {
+                    var customEvent = (each.Descriptor as CustomEvent);
+                    Console.WriteLine($"Hit {customEvent.EventName}:{customEvent.Timestamp}");
+                    break;
+                }
+            }
+
+            Console.WriteLine("Finished second pass");
+        }
+
+        private class HeapDescriptorData
+        {
+            public HeapTag Tag;
+            public long Timestamp;
+            public HeapDescriptor Descriptor;
+
+            public HeapDescriptorData SetData(HeapTag tag, long timestamp, HeapDescriptor descriptor)
+            {
+                Tag = tag;
+                Timestamp = timestamp;
+                Descriptor = descriptor;
+
+                return this;
+            }
+        }
+
+        private IEnumerable<HeapDescriptorData> GetHeapDescriptors(BinaryReaderDryWrapper reader, bool[] dryRunExceptions)
+        {
+            var lastTag = HeapTag.cTagNone;
+
+            var isEos = false;
+            var emptyReadBuffer = new byte[1024];
+
+            var result = new HeapDescriptorData();
+
+            yield return result.SetData(HeapTag.CustomEvent, 0, new CustomEvent("File start"));
+
+            var streamLength = reader.Reader.BaseStream.Length;
+            while (reader.Reader.BaseStream.Position != streamLength && !isEos)
+            {
+                var tag = (HeapTag) reader.ReadByte();
+                var descriptor = default(HeapDescriptor);
+
+                if (tag == HeapTag.cTagEos)
+                {
+                    Console.WriteLine("End of stream");
+                    isEos = true;
+                }
+
+                try
+                {
+                    if (!isEos)
+                    {
+                        if (dryRunExceptions != null)
+                        {
+                            var expectedSize =
+                                _heapDescriptorInfo.Sizes[_heapDescriptorFactory.MatchingTypes[(int) tag]];
+
+                            if (dryRunExceptions[(int) tag] || expectedSize == -1)
+                            {
+                                try
+                                {
+                                    descriptor = _heapDescriptorFactory.GetInstance(tag);
+                                }
+                                catch (Exception e)
+                                {
+                                    Console.WriteLine($"Previous tag: {lastTag}");
+                                    Console.WriteLine($"Tag {tag} unsupported; halting");
+                                }
+
+                                descriptor?.LoadFrom(reader);
+                            }
+                            else
+                            {
+                                reader.Reader.Read(emptyReadBuffer, 0, expectedSize);
+//                                reader.Reader.BaseStream.Seek(expectedSize, SeekOrigin.Current);
+//                                descriptor?.DryLoadFrom(reader);
+                            }
+                        }
+                        else
+                        {
+                            try
+                            {
+                                descriptor = _heapDescriptorFactory.GetInstance(tag);
+                            }
+                            catch (Exception e)
+                            {
+                                Console.WriteLine("Previous tag: " + lastTag);
+                                Console.WriteLine("Tag " + tag + " unsupported; halting");
+                            }
+
+                            descriptor?.LoadFrom(reader);
+                        }
+                    }
+
+                    lastTag = tag;
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine("Previous tag: " + lastTag);
+                    Console.WriteLine("Current tag: " + tag);
+                    Console.WriteLine(e);
+
+                    descriptor = null;
+
+                    isEos = true;
+                }
+
+                if (descriptor != null)
+                {
+                    yield return result.SetData(tag, reader.Reader.BaseStream.Position, descriptor);
+                }
+            }
+
+            yield return result.SetData(HeapTag.CustomEvent, reader.Reader.BaseStream.Length,
+                new CustomEvent("File end") {Timestamp = (ulong) reader.Reader.BaseStream.Length});
+        }
+
+        public List<HeapDescriptor> GetHeapDescriptors()
+        {
+            return _heapDescriptors;
+        }
+
+        public IList<CustomEvent> GetCustomEvents()
+        {
+            return _heapCustomEvents;
+        }
+    }
+
+    class Program
+    {
+        private static CustomEvent SelectTargetCustomEvent(IList<CustomEvent> customEvents)
+        {
+            if (customEvents.Count == 0)
+            {
+                return null;
+            }
+
+            var resultIndex = -1;
+
+            Console.WriteLine("Select event to replay heap to: ");
+
+            while (resultIndex < 0 || resultIndex >= customEvents.Count + 1)
+            {
+                for (var i = 0; i < customEvents.Count; ++i)
+                {
+                    Console.WriteLine(i.ToString() + " " + customEvents[i].EventName);
+                }
+
+                int.TryParse(Console.ReadLine(), out resultIndex);
+            }
+
+            return customEvents[resultIndex];
+        }
+
+        private static void DumpAllocationByType(HeapTagParser heapTagParser, MonoHeapState monoHeapState,
+            string dumpFilePath)
+        {
+//            //var monoHeapState = new MonoHeapState();
+//            monoHeapState.ResetLiveObjects();
+//            var didHitBeginning = false;
+//            foreach (var each in heapTagParser.GetHeapDescriptors())
+//            {
+//                if (!didHitBeginning)
+//                {
+//                    didHitBeginning = each == fromTag;
+//
+//                    continue;
+//                }
+//
+//                if (each == toTag)
+//                {
+//                    break;
+//                }
+//
+//                if (didHitBeginning)
+//                {
+//                    each.ApplyTo(monoHeapState);
+//                }
+//            }
+
+            using (var outStream = new FileStream(dumpFilePath + ".AllocationByBacktrace.txt", FileMode.Create))
+            {
+                var streamWriter = new StreamWriter(outStream);
+
+                monoHeapState.DumpMethodAllocationStatsByBacktrace(streamWriter);
+
+                streamWriter.Close();
+            }
+
+            using (var outStream = new FileStream(dumpFilePath + ".AllocationByType.txt", FileMode.Create))
+            {
+                var streamWriter = new StreamWriter(outStream);
+
+                monoHeapState.DumpMethodAllocationStatsByType(streamWriter);
+
+                streamWriter.Close();
+            }
+
+            Console.WriteLine("Select types to dump allocation stats for: ");
+            var typeNames = Console.ReadLine();
+
+            foreach (var each in typeNames.Split(','))
+            {
+                var fileName = each.Replace("*", "_");
+                using (var outStream = new FileStream(dumpFilePath + ".AllocationByType." + fileName + ".txt",
+                    FileMode.Create))
+                {
+                    var streamWriter = new StreamWriter(outStream);
+
+                    monoHeapState.DumpMethodAllocationStatsByType(streamWriter, each);
+
+                    streamWriter.Close();
+                }
+            }
+        }
+
+        private static void DumpGarbageCollectionByType(HeapTagParser heapTagParser, MonoHeapState monoHeapState,
+            string dumpFilePath)
+        {
+            Console.WriteLine("Dumping garbage collection stats by type...");
+
+            using (var outStream = new FileStream(dumpFilePath + ".GarbageCollectionsByType.txt", FileMode.Create))
+            {
+                var streamWriter = new StreamWriter(outStream);
+
+                monoHeapState.DumpGarbageCollectionsStatsByType(streamWriter);
+
+                streamWriter.Close();
+            }
+        }
+
+        static void Main(string[] args)
+        {
+            //var fileStream = new FileStream( args[0], FileMode.Open, FileAccess.Read, FileShare.None, ushort.MaxValue );
+
+            using (var stream =
+                new FileStream(args[0], FileMode.Open, FileAccess.Read, FileShare.None, int.MaxValue / 2))
+            {
+                var heapTagParser = new HeapTagParser(stream);
+
+                heapTagParser.PerformHeapFirstPass();
+
+                var fromTag = SelectTargetCustomEvent(heapTagParser.GetCustomEvents());
+                var toTag = SelectTargetCustomEvent(heapTagParser.GetCustomEvents());
+
+                heapTagParser.PerformHeapSecondPass(fromTag, toTag);
+
+                DumpAllocationByType(heapTagParser, heapTagParser.HeapState, args[0]);
+                DumpGarbageCollectionByType(heapTagParser, heapTagParser.HeapState, args[0]);
+
+//                using (var outStream = new FileStream(args[0] + ".heap.graph.gdf", FileMode.Create))
+//                {
+//                    var streamWriter = new StreamWriter(outStream);
+//                    ///var writer = new TextWriter( streamWriter );
+//                    var serializer = JsonSerializer.Create();
+//
+//
+//                    //foreach (var each in monoHeapState.GetLiveObjectsNew()) {
+//
+//                    //}
+//
+//                    var gdfGenerator = new GdfGenerator();
+//                    //var liveObjects = monoHeapState.GetLiveObjects();
+//
+//                    //foreach ( var each in liveObjects ) {
+//
+//                    //	if ( string.IsNullOrEmpty( each.Item1 ) || string.IsNullOrEmpty( each.Item2 ) ) { continue; }
+//
+//                    //	var color = "black";
+//                    //	if ( each.Item2 == "Mono Static Reference" ) {
+//
+//                    //		color = "red";
+//                    //	}
+//
+//                    //	var from = gdfGenerator.AddNode( each.Item1, "white", "None" );
+//                    //	var to = gdfGenerator.AddNode( each.Item2, "white", "None" );
+//
+//                    //	gdfGenerator.AddEdge( to, from, color, string.Empty );
+//                    //}
+//
+//                    Console.WriteLine("Total live objects size (MB): " + monoHeapState.GetTotalLiveObjectsSizeMb());
+//
+//                    foreach (var each in monoHeapState.GetObjectReferencesWithSize())
+//                    {
+//                        var sizeMb = ((float) each.Item3) / (1024 * 1024);
+//                        if (sizeMb < 0.1f)
+//                        {
+//                            continue;
+//                        }
+//
+//                        //if ( string.IsNullOrEmpty( each.Item1 ) || string.IsNullOrEmpty( each.Item2 ) ) { continue; }
+//
+//                        //var color = "black";
+//                        //if ( each.Item2 == "Mono Static Reference" ) {
+//
+//                        //	color = "red";
+//                        //}
+//
+//                        var monoClass = gdfGenerator.AddNode(each.Item1, "white", "None");
+//                        var monoMethod = gdfGenerator.AddNode(each.Item2, "white", "None");
+//
+//                        gdfGenerator.AddEdge(monoClass, monoMethod, "black", sizeMb.ToString().Replace(",", "."));
+//                    }
+//
+//                    gdfGenerator.Write(streamWriter);
+//
+//                    //foreach ( var each in liveObjects ) {
+//
+//                    //	//writer.WriteComment( each.GetType().Name );
+//                    //	serializer.Serialize( writer, each );
+//                    //	writer.WriteRaw( "\n" );
+//                    //}
+//
+//                    streamWriter.Close();
+//                }
+            }
+        }
+    }
 }

@@ -57,10 +57,10 @@ namespace ConsoleApplication1
             return new string(_charBuffer, 0, stringLength);
         }
 
-//        public void Read(char[] charBuffer, int i, int stringLength)
-//        {
-//            throw new NotImplementedException();
-//        }
+        //        public void Read(char[] charBuffer, int i, int stringLength)
+        //        {
+        //            throw new NotImplementedException();
+        //        }
 
         public ulong ReadUInt64()
         {
@@ -77,10 +77,10 @@ namespace ConsoleApplication1
             return IsDryMode ? FastForwardReader<Boolean>(sizeof(Boolean)) : Reader.ReadBoolean();
         }
 
-//        public byte[] ReadRawByteArray()
-//        {
-////            return IsDryMode ? FastForwardReader<byte[]>(sizeof(int)) : BinaryReader.ReadBytes();
-//        }
+        //        public byte[] ReadRawByteArray()
+        //        {
+        ////            return IsDryMode ? FastForwardReader<byte[]>(sizeof(int)) : BinaryReader.ReadBytes();
+        //        }
 
         public byte[] ReadBytes(int size)
         {
@@ -209,13 +209,13 @@ namespace ConsoleApplication1
 
             for (var i = 0; i < writtenSectionsCount; ++i)
             {
-                EnsureTag((HeapTag) reader.ReadByte(), HeapTag.cTagHeapMemorySection);
+                EnsureTag((HeapTag)reader.ReadByte(), HeapTag.cTagHeapMemorySection);
 
                 HeapMemorySections[i] = new HeapMemorySection();
                 HeapMemorySections[i].LoadFrom(reader);
             }
 
-            EnsureTag((HeapTag) reader.ReadByte(), HeapTag.cTagHeapMemoryRoots);
+            EnsureTag((HeapTag)reader.ReadByte(), HeapTag.cTagHeapMemoryRoots);
 
             HeapMemoryStaticRoots = new HeapMemoryRootSet[memoryTotalRoots];
 
@@ -225,7 +225,7 @@ namespace ConsoleApplication1
                 HeapMemoryStaticRoots[i].LoadFrom(reader);
             }
 
-            EnsureTag((HeapTag) reader.ReadByte(), HeapTag.cTagHeapMemoryThreads);
+            EnsureTag((HeapTag)reader.ReadByte(), HeapTag.cTagHeapMemoryThreads);
 
             HeapMemoryThreads = new HeapMemoryThread[memoryTotalThreads];
 
@@ -235,7 +235,7 @@ namespace ConsoleApplication1
                 HeapMemoryThreads[i].LoadFrom(reader);
             }
 
-            EnsureTag((HeapTag) reader.ReadByte(), HeapTag.cTagHeapMemoryEnd);
+            EnsureTag((HeapTag)reader.ReadByte(), HeapTag.cTagHeapMemoryEnd);
         }
 
         public override void DryLoadFrom(BinaryReaderDryWrapper reader)
@@ -270,7 +270,7 @@ namespace ConsoleApplication1
             HeapSectionBlocks = new HeapSectionBlock[blocksWrittenCount];
             for (var i = 0; i < blocksWrittenCount; ++i)
             {
-                EnsureTag((HeapTag) reader.ReadByte(), HeapTag.cTagHeapMemorySectionBlock);
+                EnsureTag((HeapTag)reader.ReadByte(), HeapTag.cTagHeapMemorySectionBlock);
 
                 HeapSectionBlocks[i] = new HeapSectionBlock();
                 HeapSectionBlocks[i].LoadFrom(reader);
@@ -360,8 +360,8 @@ namespace ConsoleApplication1
             StackSize = reader.ReadUInt32();
             RegistersSize = reader.ReadUInt32();
 
-            RawStackMemory = reader.ReadBytes((int) StackSize);
-            RawRegistersMemory = reader.ReadBytes((int) RegistersSize);
+            RawStackMemory = reader.ReadBytes((int)StackSize);
+            RawRegistersMemory = reader.ReadBytes((int)RegistersSize);
         }
 
         //Disable dry run since length reads aren't sequential with byte arrays reads
@@ -459,7 +459,7 @@ namespace ConsoleApplication1
 
         public override void ApplyTo(MonoHeapState monoHeapState)
         {
-            monoHeapState.GarbageCollections.Add(this);
+            monoHeapState.GarbageCollections.AddLast(this);
         }
 
         public override void DryLoadFrom(BinaryReaderDryWrapper reader)
@@ -637,7 +637,7 @@ namespace ConsoleApplication1
         public override void ApplyTo(MonoHeapState monoHeapState)
         {
             monoHeapState.RemoveLiveObject(this);
-            monoHeapState.GarbageCollectedObjects.Add(this);
+            monoHeapState.GarbageCollectedObjects.AddLast(this);
         }
     }
 
@@ -750,7 +750,7 @@ namespace ConsoleApplication1
 
     public enum HeapTag
     {
-//        cFileSignature = 0x4EABB055,
+        //        cFileSignature = 0x4EABB055,
         cFileVersion = 3,
 
         cTagNone = 0,
@@ -841,25 +841,25 @@ namespace ConsoleApplication1
             HeapState = new MonoHeapState();
 
             var dryRunExceptions = new bool[_heapDescriptorFactory.MatchingTypes.Length];
-            dryRunExceptions[(int) HeapTag.CustomEvent] = true;
-            dryRunExceptions[(int) HeapTag.MonoType] = true;
-            dryRunExceptions[(int) HeapTag.MonoMethod] = true;
-            dryRunExceptions[(int) HeapTag.MonoBackTrace] = true;
-            dryRunExceptions[(int) HeapTag.BackTraceTypeLink] = true;
+            dryRunExceptions[(int)HeapTag.CustomEvent] = true;
+            dryRunExceptions[(int)HeapTag.MonoType] = true;
+            dryRunExceptions[(int)HeapTag.MonoMethod] = true;
+            dryRunExceptions[(int)HeapTag.MonoBackTrace] = true;
+            dryRunExceptions[(int)HeapTag.BackTraceTypeLink] = true;
 
-//            {
-//                HeapTag.CustomEvent,
-//                HeapTag.MonoType,
-//                HeapTag.MonoMethod,
-//                HeapTag.MonoBackTrace
-//            };
+            //            {
+            //                HeapTag.CustomEvent,
+            //                HeapTag.MonoType,
+            //                HeapTag.MonoMethod,
+            //                HeapTag.MonoBackTrace
+            //            };
 
             var stopwatch = new Stopwatch();
             stopwatch.Start();
 
             foreach (var each in GetHeapDescriptors(binaryReaderWrapper, dryRunExceptions))
             {
-//                _heapDescriptors.Add(each.Item2);
+                //                _heapDescriptors.Add(each.Item2);
 
                 if (each.Tag == HeapTag.CustomEvent)
                 {
@@ -889,10 +889,14 @@ namespace ConsoleApplication1
             Console.WriteLine($"From {fromEvent.EventName} to {toEvent.EventName}");
             Console.WriteLine($"Starting position: {position}; stream length: {binaryReader.BaseStream.Length}");
 
+            var heapDescriptorData = default(HeapDescriptorData);
+
             try
             {
                 foreach (var each in GetHeapDescriptors(binaryReaderWrapper, null))
                 {
+                    heapDescriptorData = each;
+
                     each.Descriptor.ApplyTo(HeapState);
 
                     if (each.Tag == HeapTag.CustomEvent && (each.Descriptor as CustomEvent).Timestamp == toEvent.Timestamp)
@@ -905,6 +909,7 @@ namespace ConsoleApplication1
             }
             catch (Exception e)
             {
+                Console.WriteLine(JsonConvert.SerializeObject(heapDescriptorData));
                 Console.WriteLine(e.ToString());
             }
 
@@ -942,7 +947,7 @@ namespace ConsoleApplication1
             var streamLength = reader.Reader.BaseStream.Length;
             while (reader.Reader.BaseStream.Position != streamLength && !isEos)
             {
-                var tag = (HeapTag) reader.ReadByte();
+                var tag = (HeapTag)reader.ReadByte();
                 var descriptor = default(HeapDescriptor);
 
                 if (tag == HeapTag.cTagEos)
@@ -958,9 +963,9 @@ namespace ConsoleApplication1
                         if (dryRunExceptions != null)
                         {
                             var expectedSize =
-                                _heapDescriptorInfo.Sizes[_heapDescriptorFactory.MatchingTypes[(int) tag]];
+                                _heapDescriptorInfo.Sizes[_heapDescriptorFactory.MatchingTypes[(int)tag]];
 
-                            if (dryRunExceptions[(int) tag] || expectedSize == -1)
+                            if (dryRunExceptions[(int)tag] || expectedSize == -1)
                             {
                                 try
                                 {
@@ -980,8 +985,8 @@ namespace ConsoleApplication1
                             else
                             {
                                 reader.Reader.Read(emptyReadBuffer, 0, expectedSize);
-//                                reader.Reader.BaseStream.Seek(expectedSize, SeekOrigin.Current);
-//                                descriptor?.DryLoadFrom(reader);
+                                //                                reader.Reader.BaseStream.Seek(expectedSize, SeekOrigin.Current);
+                                //                                descriptor?.DryLoadFrom(reader);
                             }
                         }
                         else
@@ -1025,7 +1030,7 @@ namespace ConsoleApplication1
             }
 
             yield return result.SetData(HeapTag.CustomEvent, reader.Reader.BaseStream.Length,
-                new CustomEvent("File end") {Timestamp = (ulong) reader.Reader.BaseStream.Length});
+                new CustomEvent("File end") { Timestamp = (ulong)reader.Reader.BaseStream.Length });
         }
 
         public List<HeapDescriptor> GetHeapDescriptors()
@@ -1065,31 +1070,30 @@ namespace ConsoleApplication1
             return customEvents[resultIndex];
         }
 
-        private static void DumpAllocationByType(HeapTagParser heapTagParser, MonoHeapState monoHeapState,
-            string dumpFilePath)
+        private static void DumpAllocationByType(HeapTagParser heapTagParser, MonoHeapState monoHeapState, string dumpFilePath)
         {
-//            //var monoHeapState = new MonoHeapState();
-//            monoHeapState.ResetLiveObjects();
-//            var didHitBeginning = false;
-//            foreach (var each in heapTagParser.GetHeapDescriptors())
-//            {
-//                if (!didHitBeginning)
-//                {
-//                    didHitBeginning = each == fromTag;
-//
-//                    continue;
-//                }
-//
-//                if (each == toTag)
-//                {
-//                    break;
-//                }
-//
-//                if (didHitBeginning)
-//                {
-//                    each.ApplyTo(monoHeapState);
-//                }
-//            }
+            //            //var monoHeapState = new MonoHeapState();
+            //            monoHeapState.ResetLiveObjects();
+            //            var didHitBeginning = false;
+            //            foreach (var each in heapTagParser.GetHeapDescriptors())
+            //            {
+            //                if (!didHitBeginning)
+            //                {
+            //                    didHitBeginning = each == fromTag;
+            //
+            //                    continue;
+            //                }
+            //
+            //                if (each == toTag)
+            //                {
+            //                    break;
+            //                }
+            //
+            //                if (didHitBeginning)
+            //                {
+            //                    each.ApplyTo(monoHeapState);
+            //                }
+            //            }
 
             using (var outStream = new FileStream(dumpFilePath + ".AllocationByBacktrace.txt", FileMode.Create))
             {
@@ -1109,20 +1113,22 @@ namespace ConsoleApplication1
                 streamWriter.Close();
             }
 
-            Console.WriteLine("Select types to dump allocation stats for: ");
-            var typeNames = Console.ReadLine();
-
-            foreach (var each in typeNames.Split(','))
+            while (true)
             {
-                var fileName = each.Replace("*", "_");
-                using (var outStream = new FileStream(dumpFilePath + ".AllocationByType." + fileName + ".txt",
-                    FileMode.Create))
+                Console.WriteLine("Select types to dump allocation stats for: ");
+                var typeNames = Console.ReadLine();
+
+                foreach (var each in typeNames.Split(','))
                 {
-                    var streamWriter = new StreamWriter(outStream);
+                    var fileName = each.Replace("*", "_");
+                    using (var outStream = new FileStream(dumpFilePath + ".AllocationByType." + fileName + ".txt", FileMode.Create))
+                    {
+                        var streamWriter = new StreamWriter(outStream);
 
-                    monoHeapState.DumpMethodAllocationStatsByType(streamWriter, each);
+                        monoHeapState.DumpMethodAllocationStatsByType(streamWriter, each);
 
-                    streamWriter.Close();
+                        streamWriter.Close();
+                    }
                 }
             }
         }
@@ -1141,7 +1147,7 @@ namespace ConsoleApplication1
                 streamWriter.Close();
             }
         }
-        
+
         static void Main(string[] args)
         {
             //var fileStream = new FileStream( args[0], FileMode.Open, FileAccess.Read, FileShare.None, ushort.MaxValue );
@@ -1158,74 +1164,75 @@ namespace ConsoleApplication1
 
                 heapTagParser.PerformHeapSecondPass(fromTag, toTag);
 
-                DumpAllocationByType(heapTagParser, heapTagParser.HeapState, args[0]);
                 DumpGarbageCollectionByType(heapTagParser, heapTagParser.HeapState, args[0]);
 
-//                using (var outStream = new FileStream(args[0] + ".heap.graph.gdf", FileMode.Create))
-//                {
-//                    var streamWriter = new StreamWriter(outStream);
-//                    ///var writer = new TextWriter( streamWriter );
-//                    var serializer = JsonSerializer.Create();
-//
-//
-//                    //foreach (var each in monoHeapState.GetLiveObjectsNew()) {
-//
-//                    //}
-//
-//                    var gdfGenerator = new GdfGenerator();
-//                    //var liveObjects = monoHeapState.GetLiveObjects();
-//
-//                    //foreach ( var each in liveObjects ) {
-//
-//                    //	if ( string.IsNullOrEmpty( each.Item1 ) || string.IsNullOrEmpty( each.Item2 ) ) { continue; }
-//
-//                    //	var color = "black";
-//                    //	if ( each.Item2 == "Mono Static Reference" ) {
-//
-//                    //		color = "red";
-//                    //	}
-//
-//                    //	var from = gdfGenerator.AddNode( each.Item1, "white", "None" );
-//                    //	var to = gdfGenerator.AddNode( each.Item2, "white", "None" );
-//
-//                    //	gdfGenerator.AddEdge( to, from, color, string.Empty );
-//                    //}
-//
-//                    Console.WriteLine("Total live objects size (MB): " + monoHeapState.GetTotalLiveObjectsSizeMb());
-//
-//                    foreach (var each in monoHeapState.GetObjectReferencesWithSize())
-//                    {
-//                        var sizeMb = ((float) each.Item3) / (1024 * 1024);
-//                        if (sizeMb < 0.1f)
-//                        {
-//                            continue;
-//                        }
-//
-//                        //if ( string.IsNullOrEmpty( each.Item1 ) || string.IsNullOrEmpty( each.Item2 ) ) { continue; }
-//
-//                        //var color = "black";
-//                        //if ( each.Item2 == "Mono Static Reference" ) {
-//
-//                        //	color = "red";
-//                        //}
-//
-//                        var monoClass = gdfGenerator.AddNode(each.Item1, "white", "None");
-//                        var monoMethod = gdfGenerator.AddNode(each.Item2, "white", "None");
-//
-//                        gdfGenerator.AddEdge(monoClass, monoMethod, "black", sizeMb.ToString().Replace(",", "."));
-//                    }
-//
-//                    gdfGenerator.Write(streamWriter);
-//
-//                    //foreach ( var each in liveObjects ) {
-//
-//                    //	//writer.WriteComment( each.GetType().Name );
-//                    //	serializer.Serialize( writer, each );
-//                    //	writer.WriteRaw( "\n" );
-//                    //}
-//
-//                    streamWriter.Close();
-//                }
+                DumpAllocationByType(heapTagParser, heapTagParser.HeapState, args[0]);
+
+                //                using (var outStream = new FileStream(args[0] + ".heap.graph.gdf", FileMode.Create))
+                //                {
+                //                    var streamWriter = new StreamWriter(outStream);
+                //                    ///var writer = new TextWriter( streamWriter );
+                //                    var serializer = JsonSerializer.Create();
+                //
+                //
+                //                    //foreach (var each in monoHeapState.GetLiveObjectsNew()) {
+                //
+                //                    //}
+                //
+                //                    var gdfGenerator = new GdfGenerator();
+                //                    //var liveObjects = monoHeapState.GetLiveObjects();
+                //
+                //                    //foreach ( var each in liveObjects ) {
+                //
+                //                    //	if ( string.IsNullOrEmpty( each.Item1 ) || string.IsNullOrEmpty( each.Item2 ) ) { continue; }
+                //
+                //                    //	var color = "black";
+                //                    //	if ( each.Item2 == "Mono Static Reference" ) {
+                //
+                //                    //		color = "red";
+                //                    //	}
+                //
+                //                    //	var from = gdfGenerator.AddNode( each.Item1, "white", "None" );
+                //                    //	var to = gdfGenerator.AddNode( each.Item2, "white", "None" );
+                //
+                //                    //	gdfGenerator.AddEdge( to, from, color, string.Empty );
+                //                    //}
+                //
+                //                    Console.WriteLine("Total live objects size (MB): " + monoHeapState.GetTotalLiveObjectsSizeMb());
+                //
+                //                    foreach (var each in monoHeapState.GetObjectReferencesWithSize())
+                //                    {
+                //                        var sizeMb = ((float) each.Item3) / (1024 * 1024);
+                //                        if (sizeMb < 0.1f)
+                //                        {
+                //                            continue;
+                //                        }
+                //
+                //                        //if ( string.IsNullOrEmpty( each.Item1 ) || string.IsNullOrEmpty( each.Item2 ) ) { continue; }
+                //
+                //                        //var color = "black";
+                //                        //if ( each.Item2 == "Mono Static Reference" ) {
+                //
+                //                        //	color = "red";
+                //                        //}
+                //
+                //                        var monoClass = gdfGenerator.AddNode(each.Item1, "white", "None");
+                //                        var monoMethod = gdfGenerator.AddNode(each.Item2, "white", "None");
+                //
+                //                        gdfGenerator.AddEdge(monoClass, monoMethod, "black", sizeMb.ToString().Replace(",", "."));
+                //                    }
+                //
+                //                    gdfGenerator.Write(streamWriter);
+                //
+                //                    //foreach ( var each in liveObjects ) {
+                //
+                //                    //	//writer.WriteComment( each.GetType().Name );
+                //                    //	serializer.Serialize( writer, each );
+                //                    //	writer.WriteRaw( "\n" );
+                //                    //}
+                //
+                //                    streamWriter.Close();
+                //                }
             }
         }
     }

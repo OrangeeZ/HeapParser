@@ -15,8 +15,8 @@ namespace ConsoleApplication1
 
         public Dictionary<ulong, MonoObjectNew> ObjectPtrToMonoObjectNew = new Dictionary<ulong, MonoObjectNew>();
 
-        public List<MonoGarbageCollect> GarbageCollections = new List<MonoGarbageCollect>();
-        public List<MonoObjectGarbageCollected> GarbageCollectedObjects = new List<MonoObjectGarbageCollected>();
+        public LinkedList<MonoGarbageCollect> GarbageCollections = new LinkedList<MonoGarbageCollect>();
+        public LinkedList<MonoObjectGarbageCollected> GarbageCollectedObjects = new LinkedList<MonoObjectGarbageCollected>();
 
         private Dictionary<ulong, LiveObject> _liveObjects = new Dictionary<ulong, LiveObject>();
 

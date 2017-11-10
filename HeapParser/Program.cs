@@ -17,6 +17,9 @@ namespace ConsoleApplication1
 
         public bool IsDryMode;
 
+        private byte[] _byteBuffer = new byte[1024];
+        private char[] _charBuffer = new char[1024];
+
         public BinaryReaderDryWrapper(BinaryReader reader)
         {
             Reader = reader;
@@ -32,19 +35,26 @@ namespace ConsoleApplication1
             return IsDryMode ? FastForwardReader<Int32>(sizeof(Int32)) : Reader.ReadInt32();
         }
 
-        public string ReadString(char[] buffer)
+        public string ReadString()
         {
-            var stringLength = Reader.ReadUInt32();
+            var stringLength = Reader.ReadInt32();
 
             if (IsDryMode)
             {
-                FastForwardReader<byte>((int) stringLength);
+                FastForwardReader<byte>(stringLength);
                 return string.Empty;
             }
 
-            Reader.Read(buffer, 0, (int) stringLength);
+            Reader.Read(_byteBuffer, 0, stringLength);
+            Encoding.UTF8.GetChars(_byteBuffer, 0, stringLength, _charBuffer, 0);
 
-            return new string(buffer, 0, (int) stringLength);
+            //var charsRead = Reader.Read(buffer, 0, stringLength);
+            //if (charsRead != stringLength)
+            //{
+            //    Console.WriteLine($"{charsRead} != {stringLength}");
+            //}
+
+            return new string(_charBuffer, 0, stringLength);
         }
 
 //        public void Read(char[] charBuffer, int i, int stringLength)
@@ -92,8 +102,6 @@ namespace ConsoleApplication1
 
     public abstract class HeapDescriptor
     {
-        protected static char[] CharBuffer = new char[1024];
-
         public abstract void LoadFrom(BinaryReaderDryWrapper reader);
 
         public virtual void DryLoadFrom(BinaryReaderDryWrapper reader)
@@ -126,7 +134,7 @@ namespace ConsoleApplication1
             FileSignature = reader.ReadUInt32();
             FileVersion = reader.ReadInt32();
 
-            FileLabel = reader.ReadString(CharBuffer);
+            FileLabel = reader.ReadString();
 
             Timestamp = reader.ReadUInt64();
             PointerSize = reader.ReadByte();
@@ -387,7 +395,7 @@ namespace ConsoleApplication1
         public override void LoadFrom(BinaryReaderDryWrapper reader)
         {
             StacktraceHash = reader.ReadUInt32();
-            StacktraceBuffer = reader.ReadString(CharBuffer);
+            StacktraceBuffer = reader.ReadString();
         }
     }
 
@@ -484,7 +492,7 @@ namespace ConsoleApplication1
         {
             ClassPtr = reader.ReadUInt64();
 
-            Name = reader.ReadString(CharBuffer);
+            Name = reader.ReadString();
 
             Flags = reader.ReadByte();
             Size = reader.ReadUInt32();
@@ -603,8 +611,8 @@ namespace ConsoleApplication1
             MethodPtr = reader.ReadUInt64();
             ClassPtr = reader.ReadUInt64();
 
-            Name = reader.ReadString(CharBuffer);
-            SourceFileName = reader.ReadString(CharBuffer);
+            Name = reader.ReadString();
+            SourceFileName = reader.ReadString();
         }
 
         public override void ApplyTo(MonoHeapState monoHeapState)
@@ -683,7 +691,7 @@ namespace ConsoleApplication1
         public override void LoadFrom(BinaryReaderDryWrapper reader)
         {
             Timestamp = reader.ReadUInt64();
-            EventName = reader.ReadString(CharBuffer);
+            EventName = reader.ReadString();
         }
     }
 
@@ -806,46 +814,6 @@ namespace ConsoleApplication1
             _heapDescriptorFactory = new HeapDescriptorFactory(_heapDescriptorInfo);
         }
 
-        public void ParseHeapDump()
-        {
-            _heapDescriptors = new List<HeapDescriptor>();
-            _heapCustomEvents = new List<CustomEvent>();
-            _garbageCollectionEvents = new List<MonoGarbageCollect>();
-
-            var binaryReader = new BinaryReader(_inputStream, Encoding.UTF8);
-            var binaryReaderWrapper = new BinaryReaderDryWrapper(binaryReader);
-
-            var writerStats = new FileWriterStats();
-            writerStats.LoadFrom(binaryReaderWrapper);
-
-            _heapDescriptors.Add(writerStats);
-
-            Console.WriteLine(JsonConvert.SerializeObject(writerStats));
-
-            var dumpStats = new HeapDumpStats();
-            dumpStats.LoadFrom(binaryReaderWrapper);
-
-            _heapDescriptors.Add(dumpStats);
-
-            Console.WriteLine(JsonConvert.SerializeObject(dumpStats));
-
-            foreach (var each in GetHeapDescriptors(binaryReaderWrapper, null))
-            {
-                _heapDescriptors.Add(each.Descriptor);
-
-                switch (each.Tag)
-                {
-                    case HeapTag.MonoGarbageCollect:
-                        _garbageCollectionEvents.Add(each.Descriptor as MonoGarbageCollect);
-                        break;
-
-                    case HeapTag.CustomEvent:
-                        _heapCustomEvents.Add(each.Descriptor as CustomEvent);
-                        break;
-                }
-            }
-        }
-
         //First pass only reads custom events, new type/class/backtrace definitions
         public void PerformHeapFirstPass()
         {
@@ -896,8 +864,7 @@ namespace ConsoleApplication1
                 if (each.Tag == HeapTag.CustomEvent)
                 {
                     _heapCustomEvents.Add(each.Descriptor as CustomEvent);
-                    _heapCustomEventsAndPositions.Add(new Tuple<long, CustomEvent>(each.Timestamp,
-                        each.Descriptor as CustomEvent));
+                    _heapCustomEventsAndPositions.Add(new Tuple<long, CustomEvent>(binaryReaderWrapper.Reader.BaseStream.Position, each.Descriptor as CustomEvent));
                 }
                 else
                 {
@@ -922,16 +889,23 @@ namespace ConsoleApplication1
             Console.WriteLine($"From {fromEvent.EventName} to {toEvent.EventName}");
             Console.WriteLine($"Starting position: {position}; stream length: {binaryReader.BaseStream.Length}");
 
-            foreach (var each in GetHeapDescriptors(binaryReaderWrapper, null))
+            try
             {
-                each.Descriptor.ApplyTo(HeapState);
-
-                if (each.Tag == HeapTag.CustomEvent && (each.Descriptor as CustomEvent).Timestamp == toEvent.Timestamp)
+                foreach (var each in GetHeapDescriptors(binaryReaderWrapper, null))
                 {
-                    var customEvent = (each.Descriptor as CustomEvent);
-                    Console.WriteLine($"Hit {customEvent.EventName}:{customEvent.Timestamp}");
-                    break;
+                    each.Descriptor.ApplyTo(HeapState);
+
+                    if (each.Tag == HeapTag.CustomEvent && (each.Descriptor as CustomEvent).Timestamp == toEvent.Timestamp)
+                    {
+                        var customEvent = (each.Descriptor as CustomEvent);
+                        Console.WriteLine($"Hit {customEvent.EventName}:{customEvent.Timestamp}");
+                        break;
+                    }
                 }
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.ToString());
             }
 
             Console.WriteLine("Finished second pass");
@@ -955,6 +929,7 @@ namespace ConsoleApplication1
 
         private IEnumerable<HeapDescriptorData> GetHeapDescriptors(BinaryReaderDryWrapper reader, bool[] dryRunExceptions)
         {
+            var lastLastTag = HeapTag.cTagNone;
             var lastTag = HeapTag.cTagNone;
 
             var isEos = false;
@@ -993,8 +968,11 @@ namespace ConsoleApplication1
                                 }
                                 catch (Exception e)
                                 {
+                                    Console.WriteLine("Previous tag: " + lastLastTag);
                                     Console.WriteLine($"Previous tag: {lastTag}");
                                     Console.WriteLine($"Tag {tag} unsupported; halting");
+
+                                    yield break;
                                 }
 
                                 descriptor?.LoadFrom(reader);
@@ -1014,18 +992,23 @@ namespace ConsoleApplication1
                             }
                             catch (Exception e)
                             {
+                                Console.WriteLine("Previous tag: " + lastLastTag);
                                 Console.WriteLine("Previous tag: " + lastTag);
                                 Console.WriteLine("Tag " + tag + " unsupported; halting");
+
+                                yield break;
                             }
 
                             descriptor?.LoadFrom(reader);
                         }
                     }
 
+                    lastLastTag = lastTag;
                     lastTag = tag;
                 }
                 catch (Exception e)
                 {
+                    Console.WriteLine("Previous tag: " + lastLastTag);
                     Console.WriteLine("Previous tag: " + lastTag);
                     Console.WriteLine("Current tag: " + tag);
                     Console.WriteLine(e);
@@ -1158,7 +1141,7 @@ namespace ConsoleApplication1
                 streamWriter.Close();
             }
         }
-
+        
         static void Main(string[] args)
         {
             //var fileStream = new FileStream( args[0], FileMode.Open, FileAccess.Read, FileShare.None, ushort.MaxValue );

@@ -8,7 +8,7 @@ namespace ConsoleApplication1
 {
     public class MonoHeapState
     {
-        public Dictionary<ulong, MonoType> PtrClassMapping = new Dictionary<ulong, MonoType>();
+        public Dictionary<ulong, MonoType> PtrToClassMapping = new Dictionary<ulong, MonoType>();
         public Dictionary<ulong, MonoMethod> PtrMethodMapping = new Dictionary<ulong, MonoMethod>();
         public Dictionary<ulong, MonoBackTrace> PtrBackTraceMapping = new Dictionary<ulong, MonoBackTrace>();
         public Dictionary<ulong, ulong> PtrBacktraceToPtrClass = new Dictionary<ulong, ulong>();
@@ -19,6 +19,7 @@ namespace ConsoleApplication1
         public LinkedList<MonoObjectGarbageCollected> GarbageCollectedObjects = new LinkedList<MonoObjectGarbageCollected>();
 
         private Dictionary<ulong, LiveObject> _liveObjects = new Dictionary<ulong, LiveObject>();
+        private Dictionary<ulong, ulong> _totalAllocationsPerType = new Dictionary<ulong, ulong>();
 
         private struct LiveObject
         {
@@ -37,14 +38,24 @@ namespace ConsoleApplication1
 
         public void PostInitialize()
         {
-            ObjectClassPtr = PtrClassMapping.FirstOrDefault(_ => _.Value.Name == "object").Key;
+            ObjectClassPtr = PtrToClassMapping.FirstOrDefault(_ => _.Value.Name == "object").Key;
+        }
+
+        public void ResizeLiveObject(MonoObjectResize objectResize)
+        {
+            var liveObject = default(LiveObject);
+            if (_liveObjects.TryGetValue(objectResize.ObjectPtr, out liveObject))
+            {
+                liveObject.Size = objectResize.Size;
+                _liveObjects[objectResize.ObjectPtr] = liveObject;
+            }
         }
 
         public void AddLiveObject(MonoObjectNew newObject)
         {
             if (ObjectClassPtr == null)
             {
-                ObjectClassPtr = PtrClassMapping.FirstOrDefault(_ => _.Value.Name == "object").Key;
+                ObjectClassPtr = PtrToClassMapping.FirstOrDefault(_ => _.Value.Name == "object").Key;
             }
 
             var liveObject = new LiveObject();
@@ -62,7 +73,7 @@ namespace ConsoleApplication1
                 liveObject.Method = referencingMethod;
             }
 
-            liveObject.Class = PtrClassMapping[newObject.ClassPtr];
+            liveObject.Class = PtrToClassMapping[newObject.ClassPtr];
             liveObject.ObjectPtr = newObject.ObjectPtr;
             liveObject.BackTracePtr = newObject.BackTracePtr;
 
@@ -70,18 +81,25 @@ namespace ConsoleApplication1
             liveObject.IsStatic = false;
 
             _liveObjects.Add(liveObject.ObjectPtr, liveObject);
+
+            if (!_totalAllocationsPerType.ContainsKey(newObject.ClassPtr))
+            {
+                _totalAllocationsPerType.Add(newObject.ClassPtr, 0);
+            }
+
+            _totalAllocationsPerType[newObject.ClassPtr] += liveObject.Size;
         }
 
         public void AddLiveObject(MonoStaticClassAllocation newObject)
         {
             if (ObjectClassPtr == null)
             {
-                ObjectClassPtr = PtrClassMapping.FirstOrDefault(_ => _.Value.Name == "object").Key;
+                ObjectClassPtr = PtrToClassMapping.FirstOrDefault(_ => _.Value.Name == "object").Key;
             }
 
             var liveObject = new LiveObject();
 
-            liveObject.Class = PtrClassMapping[newObject.ClassPtr];
+            liveObject.Class = PtrToClassMapping[newObject.ClassPtr];
             liveObject.Method = null;
             liveObject.ObjectPtr = newObject.ObjectPtr;
 
@@ -103,7 +121,7 @@ namespace ConsoleApplication1
 
         public List<Tuple<string, string>> GetLiveObjects()
         {
-            var objectMonoClass = PtrClassMapping.FirstOrDefault(_ => _.Value.Name == "object");
+            var objectMonoClass = PtrToClassMapping.FirstOrDefault(_ => _.Value.Name == "object");
 
             Console.WriteLine("object class ptr = " + objectMonoClass.Key);
 
@@ -133,8 +151,8 @@ namespace ConsoleApplication1
 
                     if (referencingMethod != null)
                     {
-                        var referencingClass = PtrClassMapping.ContainsKey(referencingMethod.ClassPtr)
-                            ? PtrClassMapping[referencingMethod.ClassPtr]
+                        var referencingClass = PtrToClassMapping.ContainsKey(referencingMethod.ClassPtr)
+                            ? PtrToClassMapping[referencingMethod.ClassPtr]
                             : null;
 
                         if (referencingClass != null)
@@ -189,12 +207,12 @@ namespace ConsoleApplication1
             {
                 var monoMethod = eachAllocationMapping.Key;
 
-                if (!PtrClassMapping.ContainsKey(monoMethod.ClassPtr))
+                if (!PtrToClassMapping.ContainsKey(monoMethod.ClassPtr))
                 {
                     continue;
                 }
 
-                var allocationSource = PtrClassMapping[monoMethod.ClassPtr].Name + "." + monoMethod.Name;
+                var allocationSource = PtrToClassMapping[monoMethod.ClassPtr].Name + "." + monoMethod.Name;
 
                 foreach (var eachSizeMapping in eachAllocationMapping.Value)
                 {
@@ -242,7 +260,7 @@ namespace ConsoleApplication1
             var sizeTotalMb = 0f;
             foreach (var each in statsBySizeList)
             {
-                var currentAllocationSize = ((float) each.Value / (1024 * 1024));
+                var currentAllocationSize = ((float)each.Value / (1024 * 1024));
                 sizeTotalMb += currentAllocationSize;
                 if (currentAllocationSize > 0.1f)
                 {
@@ -253,11 +271,10 @@ namespace ConsoleApplication1
             Console.WriteLine(sizeTotalMb + " MB");
         }
 
-        public void DumpMethodAllocationStatsByType(TextWriter writer, string typeName)
+        public void DumpLiveMethodAllocationStatsByType(TextWriter writer, string typeName)
         {
             var isEqualityTest = !typeName.StartsWith("*");
             var finalTypeName = isEqualityTest ? typeName : typeName.Replace("*", string.Empty);
-            //var monoClass = PtrClassMapping.Values.FirstOrDefault( _ => _.Name == typeName );
 
             var backtraceToString = new Dictionary<ulong, string>();
 
@@ -272,11 +289,6 @@ namespace ConsoleApplication1
             {
                 backtraceToString[0] = string.Empty;
             }
-
-            //foreach ( var each in _liveObjects ) {
-
-            //	writer.WriteLine( each.Value.Class.Name + " " + each.Value.Size + " Static: " + each.Value.IsStatic );
-            //}
 
             var statsBySize = new Dictionary<ulong, uint>();
             foreach (var each in _liveObjects.Where(_ =>
@@ -285,8 +297,6 @@ namespace ConsoleApplication1
                 if (!statsBySize.ContainsKey(each.Value.BackTracePtr))
                 {
                     statsBySize[each.Value.BackTracePtr] = 0;
-
-                    //Console.WriteLine( "Matched " + each.Value.Class.Name );
                 }
 
                 statsBySize[each.Value.BackTracePtr] += each.Value.Size;
@@ -298,14 +308,34 @@ namespace ConsoleApplication1
             var sizeTotalMb = 0f;
             foreach (var each in statsBySizeList)
             {
-                sizeTotalMb += ((float) each.Value / (1024 * 1024));
-                writer.WriteLine(backtraceToString[each.Key] + " " + ((float) each.Value / (1024 * 1024)) + " MB");
+                sizeTotalMb += ((float)each.Value / (1024 * 1024));
+                writer.WriteLine(backtraceToString[each.Key] + " " + ((float)each.Value / (1024 * 1024)) + " MB");
             }
 
             Console.WriteLine(sizeTotalMb + " MB");
         }
 
-        public void DumpMethodAllocationStatsByBacktrace(TextWriter writer)
+        public void DumpTotalMethodAllocationStatsByType(TextWriter writer)
+        {
+            var byteToMb = 1f / (1024 * 1024);
+
+            var pairs = _totalAllocationsPerType.ToList();
+            pairs.Sort((a, b) => b.Value.CompareTo(a.Value));
+
+            foreach (var each in pairs)
+            {
+                if (!PtrToClassMapping.ContainsKey(each.Key))
+                {
+                    continue;
+                }
+
+                var type = PtrToClassMapping[each.Key];
+
+                writer.WriteLine($"{type.Name}: {each.Value * byteToMb} MB");
+            }
+        }
+
+        public void DumpMethodAllocationStatsByBacktrace(TextWriter writer, bool staticsOnly)
         {
             //var monoClass = PtrClassMapping.Values.FirstOrDefault( _ => _.Name == typeName );
 
@@ -323,14 +353,14 @@ namespace ConsoleApplication1
                 backtraceToString[0] = string.Empty;
             }
 
-            //foreach ( var each in _liveObjects ) {
-
-            //	writer.WriteLine( each.Value.Class.Name + " " + each.Value.Size + " Static: " + each.Value.IsStatic );
-            //}
-
             var statsBySize = new Dictionary<ulong, uint>();
             foreach (var each in _liveObjects)
             {
+                if (staticsOnly && !each.Value.IsStatic)
+                {
+                    continue;
+                }
+
                 if (!statsBySize.ContainsKey(each.Value.BackTracePtr))
                 {
                     statsBySize[each.Value.BackTracePtr] = 0;
@@ -345,8 +375,8 @@ namespace ConsoleApplication1
             var sizeTotalMb = 0f;
             foreach (var each in statsBySizeList)
             {
-                sizeTotalMb += ((float) each.Value / (1024 * 1024));
-                writer.WriteLine(backtraceToString[each.Key] + " " + ((float) each.Value / (1024 * 1024)) + " MB");
+                sizeTotalMb += ((float)each.Value / (1024 * 1024));
+                writer.WriteLine(backtraceToString[each.Key] + " " + ((float)each.Value / (1024 * 1024)) + " MB");
             }
 
             Console.WriteLine(sizeTotalMb + " MB");
@@ -392,8 +422,8 @@ namespace ConsoleApplication1
             var sizeTotalMb = 0f;
             foreach (var each in statsBySizeList)
             {
-                sizeTotalMb += ((float) each.Value / (1024 * 1024));
-                writer.WriteLine(each.Key.Name + " " + ((float) each.Value / (1024 * 1024)) + " MB");
+                sizeTotalMb += ((float)each.Value / (1024 * 1024));
+                writer.WriteLine(each.Key.Name + " " + ((float)each.Value / (1024 * 1024)) + " MB");
             }
 
             Console.WriteLine(sizeTotalMb + " MB");
@@ -433,11 +463,11 @@ namespace ConsoleApplication1
             foreach (var each in statsBySizeList)
             {
                 var monoClass = default(MonoType);
-                if (!PtrClassMapping.TryGetValue(each.Key, out monoClass))
+                if (!PtrToClassMapping.TryGetValue(each.Key, out monoClass))
                 {
                 }
 
-                sizeTotalMb += ((float) each.Value / (1024 * 1024));
+                sizeTotalMb += ((float)each.Value / (1024 * 1024));
                 writer.WriteLine(monoClass == null ? "Unknown type" : monoClass.Name + " " + each.Value);
             }
 

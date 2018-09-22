@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using Newtonsoft.Json;
 
 namespace ConsoleApplication1
 {
@@ -33,6 +34,7 @@ namespace ConsoleApplication1
         }
 
         private ulong? ObjectClassPtr = null;
+        private List<HeapMemory> _heapMemorySections = new List<HeapMemory>();
 
         //public IEnumerable<string> Get
 
@@ -112,114 +114,6 @@ namespace ConsoleApplication1
         public void RemoveLiveObject(MonoObjectGarbageCollected collectedObject)
         {
             _liveObjects.Remove(collectedObject.ObjectPtr);
-        }
-
-        public float GetTotalLiveObjectsSizeMb()
-        {
-            return _liveObjects.Values.Aggregate(0f, (total, each) => total + each.Size) / (1024 * 1024);
-        }
-
-        public List<Tuple<string, string>> GetLiveObjects()
-        {
-            var objectMonoClass = PtrToClassMapping.FirstOrDefault(_ => _.Value.Name == "object");
-
-            Console.WriteLine("object class ptr = " + objectMonoClass.Key);
-
-            var result = new List<Tuple<string, string>>();
-            var garbageCollection = GarbageCollections.Last();
-
-            foreach (var each in _liveObjects)
-            {
-                var monoClass = each.Value.Class;
-
-                if (monoClass.Name.Contains("Reflection") || monoClass.Name.Contains("MonoType"))
-                {
-                    continue;
-                }
-
-                //var backtrace = PtrBackTraceMapping[each.Value.b];
-                //var stackFrame = backtrace.StackFrames.FirstOrDefault( _ => PtrMethodMapping[_.MethodPtr].ClassPtr != objectMonoClass.Key );
-
-                var referencingClassName = string.Empty;
-
-                //if (stackFrame != null)
-                {
-                    //var referencingMethodPtr = stackFrame.MethodPtr;
-                    //var referencingMethod = PtrMethodMapping.ContainsKey(referencingMethodPtr) ? PtrMethodMapping[referencingMethodPtr] : default(MonoMethod);
-
-                    var referencingMethod = each.Value.Method;
-
-                    if (referencingMethod != null)
-                    {
-                        var referencingClass = PtrToClassMapping.ContainsKey(referencingMethod.ClassPtr)
-                            ? PtrToClassMapping[referencingMethod.ClassPtr]
-                            : null;
-
-                        if (referencingClass != null)
-                        {
-                            referencingClassName = referencingClass.Name;
-                        }
-                    }
-
-                    if (each.Value.Method == null)
-                    {
-                        referencingClassName = "Mono Runtime Reference";
-                    }
-                }
-
-
-                //var liveObject = new {
-
-                //	Name = PtrClassMapping[each.Value.ClassPtr].Name,
-                //	ReferencedBy = referencingClassName
-                //};
-
-                result.Add(new Tuple<string, string>(monoClass.Name, referencingClassName));
-            }
-
-            return result;
-        }
-
-        public IEnumerable<Tuple<string, string, uint>> GetObjectReferencesWithSize()
-        {
-            var mapping = new Dictionary<MonoMethod, Dictionary<MonoType, uint>>();
-
-            foreach (var each in _liveObjects)
-            {
-                if (each.Value.Class == null || each.Value.Method == null)
-                {
-                    continue;
-                }
-
-                var classToAllocationSizeMapping = default(Dictionary<MonoType, uint>);
-
-                if (!mapping.TryGetValue(each.Value.Method, out classToAllocationSizeMapping))
-                {
-                    classToAllocationSizeMapping = mapping[each.Value.Method] = new Dictionary<MonoType, uint>();
-                }
-
-                var allocationSize = 0u;
-                classToAllocationSizeMapping.TryGetValue(each.Value.Class, out allocationSize);
-                classToAllocationSizeMapping[each.Value.Class] = allocationSize + each.Value.Size;
-            }
-
-            foreach (var eachAllocationMapping in mapping)
-            {
-                var monoMethod = eachAllocationMapping.Key;
-
-                if (!PtrToClassMapping.ContainsKey(monoMethod.ClassPtr))
-                {
-                    continue;
-                }
-
-                var allocationSource = PtrToClassMapping[monoMethod.ClassPtr].Name + "." + monoMethod.Name;
-
-                foreach (var eachSizeMapping in eachAllocationMapping.Value)
-                {
-                    yield return new Tuple<string, string, uint>(allocationSource, eachSizeMapping.Key.Name,
-                        eachSizeMapping.Value);
-                }
-            }
         }
 
         public void DumpMethodAllocationStats(TextWriter writer)
@@ -429,6 +323,77 @@ namespace ConsoleApplication1
             Console.WriteLine(sizeTotalMb + " MB");
         }
 
+        public void DumpMemoryHeapParseResults(TextWriter writer)
+        {
+//            foreach (var each in _heapMemorySections)
+            {
+                ParseHeapMemory(_heapMemorySections[_heapMemorySections.Count - 1], writer);
+            }
+        }
+
+        private void ParseHeapMemory(HeapMemory heapMemory, TextWriter writer)
+        {
+            var memorySections = heapMemory.HeapMemorySections;
+
+            foreach (var each in memorySections.SelectMany(_ => _.HeapSectionBlocks))
+            {
+                ParseMemorySection(each, writer);
+            }
+        }
+
+        private void ParseMemorySection(HeapSectionBlock section, TextWriter writer)
+        {
+//            if ((HeapSectionBlockKind)section.BlockKind == HeapSectionBlockKind.PtrFree)
+//            {
+//                return;
+//            }
+            
+            if (section.IsFree)
+            {
+                writer.WriteLine("This section is not PtrFree, but IsFree. Skipping.");
+                
+                return;
+            }
+            
+            writer.WriteLine();
+            writer.WriteLine("--------------------------------------------");
+
+//            var binaryReader = new BinaryReader(new MemoryStream(section.BlockData));
+            for (var i = section.StartPtr; i <= section.StartPtr + section.Size; i += section.ObjSize)
+            {
+                if (_liveObjects.TryGetValue(i, out var objectInBlock))
+                {
+                    writer.WriteLine(JsonConvert.SerializeObject(objectInBlock));
+
+                    if (objectInBlock.Class.Name == "TestScript" || objectInBlock.Class.Name == "TestScript2")
+                    {
+                        var binaryReader = new BinaryReader(new MemoryStream(section.BlockData));
+                        var minAlignment = objectInBlock.Class.MinAlignment;
+                        while (binaryReader.BaseStream.Position != binaryReader.BaseStream.Length)
+                        {
+                            var potentialPointer = binaryReader.ReadUInt64();
+                            if (_liveObjects.TryGetValue(potentialPointer, out var objectInObject))
+                            {
+                                writer.Write($"\t\t{JsonConvert.SerializeObject(objectInObject)}\n");
+                            }
+
+                        }
+//                        for (var j = i; j < i + section.ObjSize; j += minAlignment)
+//                        {
+//                            if (_liveObjects.TryGetValue(i, out var objectInObject))
+//                            {
+//                                writer.Write("\t\t" + JsonConvert.SerializeObject(objectInObject));
+//                            }
+//                        }
+                    }
+                    
+                }
+            }
+            
+            writer.WriteLine("--------------------------------------------");
+            writer.WriteLine();
+        }
+
         public void DumpGarbageCollectionsStatsByType(TextWriter writer)
         {
             var backtraceToString = new Dictionary<ulong, string>();
@@ -497,6 +462,11 @@ namespace ConsoleApplication1
             }
 
             return result.ToString();
+        }
+
+        public void AddHeapMemorySection(HeapMemory heapMemory)
+        {
+            _heapMemorySections.Add(heapMemory);
         }
     }
 }

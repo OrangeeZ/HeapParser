@@ -37,7 +37,7 @@ namespace ConsoleApplication1
 
         public string ReadString()
         {
-            var stringLength = Reader.ReadInt32();
+            var stringLength = (Int32)Reader.ReadInt64();
 
             if (IsDryMode)
             {
@@ -243,12 +243,16 @@ namespace ConsoleApplication1
             LoadFrom(reader);
         }
 
+        public override void ApplyTo(MonoHeapState monoHeapState)
+        {
+            monoHeapState.AddHeapMemorySection(this);
+        }
+
         private static void EnsureTag(HeapTag currentTag, HeapTag expectedTag)
         {
             if (currentTag != expectedTag)
             {
-                throw new Exception(
-                    string.Format("Heap dump read error: got {0} expected {1}", currentTag, expectedTag));
+                throw new Exception($"Heap dump read error: got {currentTag} expected {expectedTag}");
             }
         }
     }
@@ -287,6 +291,16 @@ namespace ConsoleApplication1
         }
     }
 
+    // gc_priv.h:1140
+    public enum HeapSectionBlockKind : byte
+    {
+        PtrFree,
+        Normal,
+        Uncollectable,
+        AtomicUncollectable,
+        Stubborn
+    }
+
     [Serializable]
     public class HeapSectionBlock : HeapDescriptor
     {
@@ -295,7 +309,7 @@ namespace ConsoleApplication1
         public uint ObjSize;
         public byte BlockKind;
         public bool IsFree;
-        public ulong[] ObjectPtrs;
+        public byte[] BlockData;///ulong[] ObjectPtrs;
 
         public override void LoadFrom(BinaryReaderDryWrapper reader)
         {
@@ -307,14 +321,7 @@ namespace ConsoleApplication1
 
             if (!IsFree)
             {
-                var ptrSize = 4;
-                var ptrCount = Size / ptrSize;
-                ObjectPtrs = new ulong[ptrCount];
-
-                for (var i = 0; i < ptrCount; ++i)
-                {
-                    ObjectPtrs[i] = reader.ReadUInt32();
-                }
+                BlockData = reader.ReadBytes((int)Size);
             }
         }
     }
@@ -323,23 +330,24 @@ namespace ConsoleApplication1
     {
         public ulong StartPtr;
         public ulong EndPtr;
-        public uint Size;
-        public ulong[] ObjectPtrs; // TODO: check what actually lies in root sets
+        public ulong Size;
+        public byte[] RootSetRaw; // TODO: check what actually lies in root sets
 
         public override void LoadFrom(BinaryReaderDryWrapper reader)
         {
             StartPtr = reader.ReadUInt64();
             EndPtr = reader.ReadUInt64();
-            Size = reader.ReadUInt32();
+            Size = reader.ReadUInt64();
+            RootSetRaw = reader.ReadBytes((int) Size);
 
-            var ptrSize = 4;
-            var ptrCount = Size / ptrSize;
-            ObjectPtrs = new ulong[ptrCount];
-
-            for (var i = 0; i < ptrCount; ++i)
-            {
-                ObjectPtrs[i] = reader.ReadUInt32();
-            }
+//            var ptrSize = 8u; // Was 4
+//            var ptrCount = Size / ptrSize;
+//            ObjectPtrs = new ulong[ptrCount];
+//
+//            for (var i = 0u; i < ptrCount; ++i)
+//            {
+//                ObjectPtrs[i] = reader.ReadUInt32();
+//            }
         }
     }
 
@@ -857,6 +865,11 @@ namespace ConsoleApplication1
 
             foreach (var each in GetHeapDescriptors(binaryReaderWrapper, dryRunExceptions))
             {
+                if (each.Tag == HeapTag.HeapMemory)
+                {
+                    Console.WriteLine("HEAP MEMORY");
+                }
+                
                 if (each.Tag == HeapTag.CustomEvent)
                 {
                     _heapCustomEvents.Add(each.Descriptor as CustomEvent);
@@ -894,7 +907,7 @@ namespace ConsoleApplication1
                     heapDescriptorData = each;
 
                     each.Descriptor.ApplyTo(HeapState);
-
+                    
                     if (each.Tag == HeapTag.CustomEvent && (each.Descriptor as CustomEvent).Timestamp == toEvent.Timestamp)
                     {
                         var customEvent = (each.Descriptor as CustomEvent);
@@ -1098,6 +1111,15 @@ namespace ConsoleApplication1
                 var streamWriter = new StreamWriter(outStream);
 
                 monoHeapState.DumpMethodAllocationStatsByType(streamWriter);
+
+                streamWriter.Close();
+            }
+            
+            using (var outStream = new FileStream(dumpFilePath + ".MemoryHeapParseResults.txt", FileMode.Create))
+            {
+                var streamWriter = new StreamWriter(outStream);
+
+                monoHeapState.DumpMemoryHeapParseResults(streamWriter);
 
                 streamWriter.Close();
             }

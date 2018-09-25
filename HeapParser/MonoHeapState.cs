@@ -363,7 +363,7 @@ namespace ConsoleApplication1
             {
                 if (_liveObjects.TryGetValue(i, out var objectInBlock))
                 {
-                    writer.WriteLine(JsonConvert.SerializeObject(objectInBlock));
+                    writer.WriteLine($"{objectInBlock.Class.Name}:{objectInBlock.ObjectPtr}");//JsonConvert.SerializeObject(objectInBlock));
 
                     if (objectInBlock.Class.Name == "TestScript" || objectInBlock.Class.Name == "TestScript2")
                     {
@@ -374,7 +374,7 @@ namespace ConsoleApplication1
                             var potentialPointer = binaryReader.ReadUInt64();
                             if (_liveObjects.TryGetValue(potentialPointer, out var objectInObject))
                             {
-                                writer.Write($"\t\t{JsonConvert.SerializeObject(objectInObject)}\n");
+                                writer.Write($"\t\t{objectInObject.Class.Name}:{objectInObject.ObjectPtr}\n");
                             }
 
                         }

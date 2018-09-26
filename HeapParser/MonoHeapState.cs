@@ -325,6 +325,11 @@ namespace ConsoleApplication1
 
         public void DumpMemoryHeapParseResults(TextWriter writer)
         {
+            if (_heapMemorySections.Count == 0)
+            {
+                return;
+            }
+            
 //            foreach (var each in _heapMemorySections)
             {
                 ParseHeapMemory(_heapMemorySections[_heapMemorySections.Count - 1], writer);

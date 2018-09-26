@@ -37,7 +37,7 @@ namespace ConsoleApplication1
 
         public string ReadString()
         {
-            var stringLength = (Int32)Reader.ReadInt64();
+            var stringLength = Reader.ReadInt32();
 
             if (IsDryMode)
             {
@@ -84,7 +84,7 @@ namespace ConsoleApplication1
 
         public byte[] ReadBytes(int size)
         {
-            return IsDryMode ? FastForwardReader<byte[]>(sizeof(int)) : Reader.ReadBytes(size);
+            return IsDryMode ? FastForwardReader<byte[]>(size) : Reader.ReadBytes(size);
         }
 
         public int ReadInt16()

@@ -1,5 +1,6 @@
 ﻿using System.IO;
 using System.Linq;
+using System.Text;
 using HeapParser;
 
 namespace ConsoleApplication1.MonoHeapStateStats
@@ -45,6 +46,9 @@ namespace ConsoleApplication1.MonoHeapStateStats
             writer.WriteLine();
             writer.WriteLine("--------------------------------------------");
 
+            var stringBuilder = new StringBuilder();
+            var charBuffer = new char[1024];
+            
             for (var i = section.StartPtr; i <= section.StartPtr + section.Size; i += section.ObjSize)
             {
                 if (!_monoHeapState.LiveObjects.TryGetValue(i, out var objectInBlock))
@@ -62,7 +66,11 @@ namespace ConsoleApplication1.MonoHeapStateStats
 
                     if (_monoHeapState.LiveObjects.TryGetValue(potentialPointer, out var objectInObject))
                     {
-                        writer.Write($"\t\t{objectInObject.Class.Name}:{objectInObject.ObjectPtr}\n");
+                        stringBuilder.Clear();
+                        stringBuilder.Append("\t\t").Append(objectInObject.Class.Name).Append(objectInObject.ObjectPtr);
+                        stringBuilder.CopyTo(0, charBuffer, 0, stringBuilder.Length);
+                        
+                        writer.WriteLine(charBuffer, 0, stringBuilder.Length);
                     }
                 }
             }

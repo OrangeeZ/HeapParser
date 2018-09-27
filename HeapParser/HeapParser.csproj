@@ -51,6 +51,7 @@
     <Compile Include="HeapDescriptorInfo.cs" />
     <Compile Include="MonoHeapState.cs" />
     <Compile Include="GdfGenerator.cs" />
+    <Compile Include="MonoHeapStateStats\LiveMethodAllocationsByType.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>

@@ -3,24 +3,23 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
-using Newtonsoft.Json;
 
 namespace ConsoleApplication1
 {
     public class MonoHeapState
     {
         public Dictionary<ulong, MonoType> PtrToClassMapping = new Dictionary<ulong, MonoType>();
-        public Dictionary<ulong, MonoMethod> PtrMethodMapping = new Dictionary<ulong, MonoMethod>();
-        public Dictionary<ulong, MonoBackTrace> PtrBackTraceMapping = new Dictionary<ulong, MonoBackTrace>();
-        public Dictionary<ulong, ulong> PtrBacktraceToPtrClass = new Dictionary<ulong, ulong>();
+        public Dictionary<ulong, MonoMethod> PtrToMethodMapping = new Dictionary<ulong, MonoMethod>();
+        public Dictionary<ulong, MonoBackTrace> PtrToBackTraceMapping = new Dictionary<ulong, MonoBackTrace>();
 
         public LinkedList<MonoGarbageCollect> GarbageCollections = new LinkedList<MonoGarbageCollect>();
         public LinkedList<MonoObjectGarbageCollected> GarbageCollectedObjects = new LinkedList<MonoObjectGarbageCollected>();
 
-        private Dictionary<ulong, LiveObject> _liveObjects = new Dictionary<ulong, LiveObject>();
+        public Dictionary<ulong, LiveObject> LiveObjects = new Dictionary<ulong, LiveObject>();
+        
         private Dictionary<ulong, ulong> _totalAllocationsPerType = new Dictionary<ulong, ulong>();
 
-        private struct LiveObject
+        public struct LiveObject
         {
             public MonoType Class;
             public MonoMethod Method;
@@ -42,10 +41,10 @@ namespace ConsoleApplication1
         public void ResizeLiveObject(MonoObjectResize objectResize)
         {
             var liveObject = default(LiveObject);
-            if (_liveObjects.TryGetValue(objectResize.ObjectPtr, out liveObject))
+            if (LiveObjects.TryGetValue(objectResize.ObjectPtr, out liveObject))
             {
                 liveObject.Size = objectResize.Size;
-                _liveObjects[objectResize.ObjectPtr] = liveObject;
+                LiveObjects[objectResize.ObjectPtr] = liveObject;
             }
         }
 
@@ -58,15 +57,15 @@ namespace ConsoleApplication1
 
             var liveObject = new LiveObject();
 
-            var backtrace = PtrBackTraceMapping[newObject.BackTracePtr];
+            var backtrace = PtrToBackTraceMapping[newObject.BackTracePtr];
             var index = Math.Max(backtrace.StackFrames.Length - 2, 0);
             var stackFrame = backtrace.StackFrames.Length > 0 ? backtrace.StackFrames[index] : null;
 
             if (stackFrame != null)
             {
                 var referencingMethodPtr = stackFrame.MethodPtr;
-                var referencingMethod = PtrMethodMapping.ContainsKey(referencingMethodPtr)
-                    ? PtrMethodMapping[referencingMethodPtr]
+                var referencingMethod = PtrToMethodMapping.ContainsKey(referencingMethodPtr)
+                    ? PtrToMethodMapping[referencingMethodPtr]
                     : default(MonoMethod);
                 liveObject.Method = referencingMethod;
             }
@@ -78,7 +77,7 @@ namespace ConsoleApplication1
             liveObject.Size = newObject.Size;
             liveObject.IsStatic = false;
 
-            _liveObjects.Add(liveObject.ObjectPtr, liveObject);
+            LiveObjects.Add(liveObject.ObjectPtr, liveObject);
 
             if (!_totalAllocationsPerType.ContainsKey(newObject.ClassPtr))
             {
@@ -104,19 +103,19 @@ namespace ConsoleApplication1
             liveObject.Size = newObject.Size;
             liveObject.IsStatic = true;
 
-            _liveObjects.Add(liveObject.ObjectPtr, liveObject);
+            LiveObjects.Add(liveObject.ObjectPtr, liveObject);
         }
 
         public void RemoveLiveObject(MonoObjectGarbageCollected collectedObject)
         {
-            _liveObjects.Remove(collectedObject.ObjectPtr);
+            LiveObjects.Remove(collectedObject.ObjectPtr);
         }
 
         public void DumpMethodAllocationStats(TextWriter writer)
         {
             var backtraceToString = new Dictionary<ulong, string>();
 
-            foreach (var each in PtrBackTraceMapping)
+            foreach (var each in PtrToBackTraceMapping)
             {
                 var backtraceString = BackTraceToString(each.Value);
 
@@ -134,7 +133,7 @@ namespace ConsoleApplication1
             //}
 
             var statsBySize = new Dictionary<MonoType, uint>();
-            foreach (var each in _liveObjects)
+            foreach (var each in LiveObjects)
             {
                 if (!statsBySize.ContainsKey(each.Value.Class))
                 {
@@ -156,50 +155,6 @@ namespace ConsoleApplication1
                 {
                     writer.WriteLine(each.Key.Name + " " + currentAllocationSize + " MB");
                 }
-            }
-
-            Console.WriteLine(sizeTotalMb + " MB");
-        }
-
-        public void DumpLiveMethodAllocationStatsByType(TextWriter writer, string typeName)
-        {
-            var isEqualityTest = !typeName.StartsWith("*");
-            var finalTypeName = isEqualityTest ? typeName : typeName.Replace("*", string.Empty);
-
-            var backtraceToString = new Dictionary<ulong, string>();
-
-            foreach (var each in PtrBackTraceMapping)
-            {
-                var backtraceString = BackTraceToString(each.Value);
-
-                backtraceToString[each.Key] = backtraceString;
-            }
-
-            if (!backtraceToString.ContainsKey(0))
-            {
-                backtraceToString[0] = string.Empty;
-            }
-
-            var statsBySize = new Dictionary<ulong, uint>();
-            foreach (var each in _liveObjects.Where(_ =>
-                isEqualityTest ? _.Value.Class.Name == finalTypeName : _.Value.Class.Name.Contains(finalTypeName)))
-            {
-                if (!statsBySize.ContainsKey(each.Value.BackTracePtr))
-                {
-                    statsBySize[each.Value.BackTracePtr] = 0;
-                }
-
-                statsBySize[each.Value.BackTracePtr] += each.Value.Size;
-            }
-
-            var statsBySizeList = statsBySize.ToList();
-            statsBySizeList.Sort((a, b) => b.Value.CompareTo(a.Value));
-
-            var sizeTotalMb = 0f;
-            foreach (var each in statsBySizeList)
-            {
-                sizeTotalMb += ((float)each.Value / (1024 * 1024));
-                writer.WriteLine(backtraceToString[each.Key] + " " + ((float)each.Value / (1024 * 1024)) + " MB");
             }
 
             Console.WriteLine(sizeTotalMb + " MB");
@@ -231,7 +186,7 @@ namespace ConsoleApplication1
 
             var backtraceToString = new Dictionary<ulong, string>();
 
-            foreach (var each in PtrBackTraceMapping)
+            foreach (var each in PtrToBackTraceMapping)
             {
                 var backtraceString = BackTraceToString(each.Value);
 
@@ -244,7 +199,7 @@ namespace ConsoleApplication1
             }
 
             var statsBySize = new Dictionary<ulong, uint>();
-            foreach (var each in _liveObjects)
+            foreach (var each in LiveObjects)
             {
                 if (staticsOnly && !each.Value.IsStatic)
                 {
@@ -278,7 +233,7 @@ namespace ConsoleApplication1
 
             var backtraceToString = new Dictionary<ulong, string>();
 
-            foreach (var each in PtrBackTraceMapping)
+            foreach (var each in PtrToBackTraceMapping)
             {
                 var backtraceString = BackTraceToString(each.Value);
 
@@ -296,7 +251,7 @@ namespace ConsoleApplication1
             //}
 
             var statsBySize = new Dictionary<MonoType, uint>();
-            foreach (var each in _liveObjects)
+            foreach (var each in LiveObjects)
             {
                 if (!statsBySize.ContainsKey(each.Value.Class))
                 {
@@ -362,7 +317,7 @@ namespace ConsoleApplication1
 //            var binaryReader = new BinaryReader(new MemoryStream(section.BlockData));
             for (var i = section.StartPtr; i <= section.StartPtr + section.Size; i += section.ObjSize)
             {
-                if (_liveObjects.TryGetValue(i, out var objectInBlock))
+                if (LiveObjects.TryGetValue(i, out var objectInBlock))
                 {
                     writer.WriteLine($"{objectInBlock.Class.Name}:{objectInBlock.ObjectPtr}");//JsonConvert.SerializeObject(objectInBlock));
 
@@ -373,7 +328,7 @@ namespace ConsoleApplication1
                         while (binaryReader.BaseStream.Position != binaryReader.BaseStream.Length)
                         {
                             var potentialPointer = binaryReader.ReadUInt64();
-                            if (_liveObjects.TryGetValue(potentialPointer, out var objectInObject))
+                            if (LiveObjects.TryGetValue(potentialPointer, out var objectInObject))
                             {
                                 writer.Write($"\t\t{objectInObject.Class.Name}:{objectInObject.ObjectPtr}\n");
                             }
@@ -399,7 +354,7 @@ namespace ConsoleApplication1
         {
             var backtraceToString = new Dictionary<ulong, string>();
 
-            foreach (var each in PtrBackTraceMapping)
+            foreach (var each in PtrToBackTraceMapping)
             {
                 var backtraceString = BackTraceToString(each.Value);
 
@@ -442,16 +397,16 @@ namespace ConsoleApplication1
 
         public void ResetLiveObjects()
         {
-            _liveObjects.Clear();
+            LiveObjects.Clear();
             GarbageCollectedObjects.Clear();
         }
 
-        private string BackTraceToString(MonoBackTrace backtrace)
+        public string BackTraceToString(MonoBackTrace backtrace)
         {
             var result = new StringBuilder();
             foreach (var each in backtrace.StackFrames)
             {
-                var monoMethod = PtrMethodMapping.ContainsKey(each.MethodPtr) ? PtrMethodMapping[each.MethodPtr] : null;
+                var monoMethod = PtrToMethodMapping.ContainsKey(each.MethodPtr) ? PtrToMethodMapping[each.MethodPtr] : null;
 
                 if (monoMethod == null || monoMethod.Name.Contains("(wrapper"))
                 {

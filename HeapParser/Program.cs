@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
+using ConsoleApplication1.MonoHeapStateStats;
 using Newtonsoft.Json;
 
 namespace ConsoleApplication1
@@ -560,7 +561,7 @@ namespace ConsoleApplication1
 
         public override void ApplyTo(MonoHeapState monoHeapState)
         {
-            monoHeapState.PtrBackTraceMapping[BackTracePtr] = this;
+            monoHeapState.PtrToBackTraceMapping[BackTracePtr] = this;
         }
     }
 
@@ -617,7 +618,7 @@ namespace ConsoleApplication1
 
         public override void ApplyTo(MonoHeapState monoHeapState)
         {
-            monoHeapState.PtrMethodMapping[MethodPtr] = this;
+            monoHeapState.PtrToMethodMapping[MethodPtr] = this;
         }
     }
 
@@ -1128,7 +1129,7 @@ namespace ConsoleApplication1
                     {
                         var streamWriter = new StreamWriter(outStream);
 
-                        monoHeapState.DumpLiveMethodAllocationStatsByType(streamWriter, each);
+                        new LiveMethodAllocationsByType().DumpLiveMethodAllocationStatsByType(monoHeapState, streamWriter, each);
 
                         streamWriter.Close();
                     }

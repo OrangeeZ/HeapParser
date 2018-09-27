@@ -788,7 +788,7 @@ namespace HeapParser
             }
         }
 
-        private static void DumpGarbageCollectionByType(HeapTagParser heapTagParser, MonoHeapState monoHeapState,
+        private static void DumpGarbageCollectionByType(MonoHeapState monoHeapState,
             string dumpFilePath)
         {
             Console.WriteLine("Dumping garbage collection stats by type...");
@@ -816,7 +816,7 @@ namespace HeapParser
 
                 heapTagParser.PerformHeapSecondPass(fromTag, toTag);
 
-                DumpGarbageCollectionByType(heapTagParser, heapTagParser.HeapState, args[0]);
+                DumpGarbageCollectionByType(heapTagParser.HeapState, args[0]);
 
                 DumpAllocationByType(heapTagParser, heapTagParser.HeapState, args[0]);
             }

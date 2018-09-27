@@ -51,6 +51,7 @@
     <Compile Include="HeapDescriptorInfo.cs" />
     <Compile Include="MonoHeapState.cs" />
     <Compile Include="GdfGenerator.cs" />
+    <Compile Include="MonoHeapStateStats\GarbageCollectionByType.cs" />
     <Compile Include="MonoHeapStateStats\LiveMethodAllocationsByType.cs" />
     <Compile Include="MonoHeapStateStats\MemoryDumpParser.cs" />
     <Compile Include="Program.cs" />

@@ -1146,7 +1146,7 @@ namespace ConsoleApplication1
             {
                 var streamWriter = new StreamWriter(outStream);
 
-                monoHeapState.DumpGarbageCollectionsStatsByType(streamWriter);
+                new GarbageCollectionByType(monoHeapState).DumpGarbageCollectionsStatsByType(streamWriter);
 
                 streamWriter.Close();
             }

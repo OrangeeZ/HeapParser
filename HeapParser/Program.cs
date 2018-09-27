@@ -46,19 +46,8 @@ namespace ConsoleApplication1
             Reader.Read(_byteBuffer, 0, stringLength);
             Encoding.UTF8.GetChars(_byteBuffer, 0, stringLength, _charBuffer, 0);
 
-            //var charsRead = Reader.Read(buffer, 0, stringLength);
-            //if (charsRead != stringLength)
-            //{
-            //    Console.WriteLine($"{charsRead} != {stringLength}");
-            //}
-
             return new string(_charBuffer, 0, stringLength);
         }
-
-        //        public void Read(char[] charBuffer, int i, int stringLength)
-        //        {
-        //            throw new NotImplementedException();
-        //        }
 
         public ulong ReadUInt64()
         {
@@ -74,11 +63,6 @@ namespace ConsoleApplication1
         {
             return IsDryMode ? FastForwardReader<Boolean>(sizeof(Boolean)) : Reader.ReadBoolean();
         }
-
-        //        public byte[] ReadRawByteArray()
-        //        {
-        ////            return IsDryMode ? FastForwardReader<byte[]>(sizeof(int)) : BinaryReader.ReadBytes();
-        //        }
 
         public byte[] ReadBytes(int size)
         {
@@ -307,7 +291,7 @@ namespace ConsoleApplication1
         public uint ObjSize;
         public byte BlockKind;
         public bool IsFree;
-        public byte[] BlockData;///ulong[] ObjectPtrs;
+        public byte[] BlockData;
 
         public override void LoadFrom(BinaryReaderDryWrapper reader)
         {
@@ -337,15 +321,6 @@ namespace ConsoleApplication1
             EndPtr = reader.ReadUInt64();
             Size = reader.ReadUInt64();
             RootSetRaw = reader.ReadBytes((int) Size);
-
-//            var ptrSize = 8u; // Was 4
-//            var ptrCount = Size / ptrSize;
-//            ObjectPtrs = new ulong[ptrCount];
-//
-//            for (var i = 0u; i < ptrCount; ++i)
-//            {
-//                ObjectPtrs[i] = reader.ReadUInt32();
-//            }
         }
     }
 
@@ -642,7 +617,7 @@ namespace ConsoleApplication1
         }
     }
 
-    class MonoHeapResize : HeapDescriptor
+    public class MonoHeapResize : HeapDescriptor
     {
         public ulong Timestamp;
         public ulong NewSize;

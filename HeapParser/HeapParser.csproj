@@ -49,6 +49,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="HeapDescriptorInfo.cs" />
+    <Compile Include="HeapTagParser.cs" />
     <Compile Include="MonoHeapState.cs" />
     <Compile Include="GdfGenerator.cs" />
     <Compile Include="MonoHeapStateStats\GarbageCollectionByType.cs" />

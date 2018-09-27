@@ -1,13 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Data.Odbc;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Runtime.Serialization.Formatters;
 using System.Text;
 using Newtonsoft.Json;
-using System.Threading;
 
 namespace ConsoleApplication1
 {
@@ -567,7 +564,7 @@ namespace ConsoleApplication1
         }
     }
 
-    class BackTraceTypeLink : HeapDescriptor
+    public class BackTraceTypeLink : HeapDescriptor
     {
         public ulong BackTracePtr;
         public ulong ClassPtr;
@@ -576,11 +573,6 @@ namespace ConsoleApplication1
         {
             BackTracePtr = reader.ReadUInt64();
             ClassPtr = reader.ReadUInt64();
-        }
-
-        public override void ApplyTo(MonoHeapState monoHeapState)
-        {
-            monoHeapState.PtrBacktraceToPtrClass[BackTracePtr] = ClassPtr;
         }
     }
 

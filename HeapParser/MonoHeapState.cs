@@ -14,8 +14,6 @@ namespace ConsoleApplication1
         public Dictionary<ulong, MonoBackTrace> PtrBackTraceMapping = new Dictionary<ulong, MonoBackTrace>();
         public Dictionary<ulong, ulong> PtrBacktraceToPtrClass = new Dictionary<ulong, ulong>();
 
-        public Dictionary<ulong, MonoObjectNew> ObjectPtrToMonoObjectNew = new Dictionary<ulong, MonoObjectNew>();
-
         public LinkedList<MonoGarbageCollect> GarbageCollections = new LinkedList<MonoGarbageCollect>();
         public LinkedList<MonoObjectGarbageCollected> GarbageCollectedObjects = new LinkedList<MonoObjectGarbageCollected>();
 
@@ -35,8 +33,6 @@ namespace ConsoleApplication1
 
         private ulong? ObjectClassPtr = null;
         private List<HeapMemory> _heapMemorySections = new List<HeapMemory>();
-
-        //public IEnumerable<string> Get
 
         public void PostInitialize()
         {

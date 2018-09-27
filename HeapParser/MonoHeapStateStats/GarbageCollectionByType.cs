@@ -52,10 +52,8 @@ namespace HeapParser.MonoHeapStateStats
                 }
 
                 sizeTotalMb += ((float) each.Value / (1024 * 1024));
-                writer.WriteLine(monoClass == null ? "Unknown type" : monoClass.Name + " " + each.Value);
+                writer.WriteLine(monoClass == null ? "Unknown type" : $"{monoClass.Name} {each.Value}");
             }
-
-            //Console.WriteLine( sizeTotalMb + " MB" );
         }
     }
 }

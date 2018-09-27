@@ -41,11 +41,14 @@ namespace HeapParser.MonoHeapStateStats
             var statsBySizeList = statsBySize.ToList();
             statsBySizeList.Sort((a, b) => b.Value.CompareTo(a.Value));
 
+            var byteToMb = 1f / (1024 * 1024);
+            
             var sizeTotalMb = 0f;
             foreach (var each in statsBySizeList)
             {
-                sizeTotalMb += ((float)each.Value / (1024 * 1024));
-                writer.WriteLine(backtraceToString[each.Key] + " " + ((float)each.Value / (1024 * 1024)) + " MB");
+                var allocationPerBacktrace = each.Value / byteToMb;
+                sizeTotalMb += allocationPerBacktrace;
+                writer.WriteLine($"{allocationPerBacktrace} MB : {backtraceToString[each.Key]}");
             }
 
             Console.WriteLine(sizeTotalMb + " MB");

@@ -2,69 +2,72 @@
 using System.Collections.Generic;
 using System.IO;
 
-public class GdfGenerator
+namespace HeapParser
 {
-	public class Node {
-		public string name;
-		public string color;
-		public string description;
-	}
-
-	private List<Node> _nodes = new List<Node>();
-	private List<Tuple<int, int, string, string>> _edges = new List<Tuple<int, int, string, string>>();
-
-	public GdfGenerator()
+	public class GdfGenerator
 	{
-	}
-
-	public int AddNode(string name, string color, string description) {
-
-		_nodes.Add( new Node { name = name.Replace(",", "$"), color = color, description = description } );
-		return _nodes.Count - 1;
-	}
-
-	public void AddEdge(int fromNode, int toNode, string color, string description) {
-
-		_edges.Add( new Tuple<int, int, string, string>( fromNode, toNode, color, description ) );
-	}
-
-	public void Write( TextWriter outputStream ) {
-
-		WriteNodeHeader( outputStream );
-
-		for (var i = 0; i < _nodes.Count; ++i) {
-
-			WriteNode( outputStream, i );
+		public class Node {
+			public string name;
+			public string color;
+			public string description;
 		}
 
-		WriteEdgeHeader( outputStream );
+		private List<Node> _nodes = new List<Node>();
+		private List<Tuple<int, int, string, string>> _edges = new List<Tuple<int, int, string, string>>();
 
-		foreach(var each in _edges) {
-
-			WriteEdge( outputStream, each.Item1, each.Item2, each.Item3, each.Item4 );
+		public GdfGenerator()
+		{
 		}
-	}
 
-	private void WriteNodeHeader( TextWriter writer ) {
+		public int AddNode(string name, string color, string description) {
 
-		writer.WriteLine( "nodedef> name,color,label" );
-	}
+			_nodes.Add( new Node { name = name.Replace(",", "$"), color = color, description = description } );
+			return _nodes.Count - 1;
+		}
 
-	private void WriteNode(TextWriter writer, int nodeId) {
+		public void AddEdge(int fromNode, int toNode, string color, string description) {
 
-		var node = _nodes[nodeId];
-		var nodeString = string.Format( "{0},{1},{2}", node.name, node.color, node.name );
+			_edges.Add( new Tuple<int, int, string, string>( fromNode, toNode, color, description ) );
+		}
 
-		writer.WriteLine( nodeString );
-	}
+		public void Write( TextWriter outputStream ) {
 
-	private void WriteEdgeHeader(TextWriter writer ) {
+			WriteNodeHeader( outputStream );
 
-		writer.WriteLine( "edgedef> node1,node2,color,directed,label" );
-	}
+			for (var i = 0; i < _nodes.Count; ++i) {
 
-	private void WriteEdge( TextWriter writer, int fromNodeId, int toNodeId, string color, string description ) {
+				WriteNode( outputStream, i );
+			}
 
-		writer.WriteLine( string.Format( "{0},{1},{2},true,{3}", _nodes[fromNodeId].name, _nodes[toNodeId].name, color, description ) );
+			WriteEdgeHeader( outputStream );
+
+			foreach(var each in _edges) {
+
+				WriteEdge( outputStream, each.Item1, each.Item2, each.Item3, each.Item4 );
+			}
+		}
+
+		private void WriteNodeHeader( TextWriter writer ) {
+
+			writer.WriteLine( "nodedef> name,color,label" );
+		}
+
+		private void WriteNode(TextWriter writer, int nodeId) {
+
+			var node = _nodes[nodeId];
+			var nodeString = string.Format( "{0},{1},{2}", node.name, node.color, node.name );
+
+			writer.WriteLine( nodeString );
+		}
+
+		private void WriteEdgeHeader(TextWriter writer ) {
+
+			writer.WriteLine( "edgedef> node1,node2,color,directed,label" );
+		}
+
+		private void WriteEdge( TextWriter writer, int fromNodeId, int toNodeId, string color, string description ) {
+
+			writer.WriteLine( string.Format( "{0},{1},{2},true,{3}", _nodes[fromNodeId].name, _nodes[toNodeId].name, color, description ) );
+		}
 	}
 }

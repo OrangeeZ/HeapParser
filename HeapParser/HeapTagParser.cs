@@ -4,10 +4,9 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
-using HeapParser;
 using Newtonsoft.Json;
 
-namespace ConsoleApplication1
+namespace HeapParser
 {
     class HeapTagParser
     {

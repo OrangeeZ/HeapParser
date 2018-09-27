@@ -3,9 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
-using HeapParser;
 
-namespace ConsoleApplication1
+namespace HeapParser
 {
     public class MonoHeapState
     {

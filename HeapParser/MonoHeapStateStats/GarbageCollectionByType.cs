@@ -1,9 +1,8 @@
 ﻿using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using HeapParser;
 
-namespace ConsoleApplication1.MonoHeapStateStats
+namespace HeapParser.MonoHeapStateStats
 {
     public class GarbageCollectionByType
     {

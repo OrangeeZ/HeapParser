@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
-namespace ConsoleApplication1.MonoHeapStateStats
+namespace HeapParser.MonoHeapStateStats
 {
     public class LiveMethodAllocationsByType
     {

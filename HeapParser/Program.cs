@@ -2,8 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
-using ConsoleApplication1;
-using ConsoleApplication1.MonoHeapStateStats;
+using HeapParser.MonoHeapStateStats;
 
 namespace HeapParser
 {

@@ -17,7 +17,6 @@ namespace ConsoleApplication1
 
         private List<CustomEvent> _heapCustomEvents;
         private List<Tuple<long, CustomEvent>> _heapCustomEventsAndPositions;
-        private List<MonoGarbageCollect> _garbageCollectionEvents;
 
         private HeapDescriptorInfo _heapDescriptorInfo;
         private HeapDescriptorFactory _heapDescriptorFactory;
@@ -190,7 +189,7 @@ namespace ConsoleApplication1
                                 {
                                     descriptor = _heapDescriptorFactory.GetInstance(tag);
                                 }
-                                catch (Exception e)
+                                catch (Exception)
                                 {
                                     Console.WriteLine("Previous tag: " + lastLastTag);
                                     Console.WriteLine($"Previous tag: {lastTag}");
@@ -212,7 +211,7 @@ namespace ConsoleApplication1
                             {
                                 descriptor = _heapDescriptorFactory.GetInstance(tag);
                             }
-                            catch (Exception e)
+                            catch (Exception)
                             {
                                 Console.WriteLine("Previous tag: " + lastLastTag);
                                 Console.WriteLine("Previous tag: " + lastTag);

@@ -1112,7 +1112,7 @@ namespace ConsoleApplication1
             {
                 var streamWriter = new StreamWriter(outStream);
 
-                monoHeapState.DumpMemoryHeapParseResults(streamWriter);
+                new MemoryDumpParser(monoHeapState).DumpMemoryHeapParseResults(streamWriter);
 
                 streamWriter.Close();
             }

@@ -30,8 +30,9 @@ namespace ConsoleApplication1
             public bool IsStatic;
         }
 
+        public List<HeapMemory> HeapMemorySections = new List<HeapMemory>();
+
         private ulong? ObjectClassPtr = null;
-        private List<HeapMemory> _heapMemorySections = new List<HeapMemory>();
 
         public void PostInitialize()
         {
@@ -229,8 +230,6 @@ namespace ConsoleApplication1
 
         public void DumpMethodAllocationStatsByType(TextWriter writer)
         {
-            //var monoClass = PtrClassMapping.Values.FirstOrDefault( _ => _.Name == typeName );
-
             var backtraceToString = new Dictionary<ulong, string>();
 
             foreach (var each in PtrToBackTraceMapping)
@@ -244,11 +243,6 @@ namespace ConsoleApplication1
             {
                 backtraceToString[0] = string.Empty;
             }
-
-            //foreach ( var each in _liveObjects ) {
-
-            //	writer.WriteLine( each.Value.Class.Name + " " + each.Value.Size + " Static: " + each.Value.IsStatic );
-            //}
 
             var statsBySize = new Dictionary<MonoType, uint>();
             foreach (var each in LiveObjects)
@@ -272,82 +266,6 @@ namespace ConsoleApplication1
             }
 
             Console.WriteLine(sizeTotalMb + " MB");
-        }
-
-        public void DumpMemoryHeapParseResults(TextWriter writer)
-        {
-            if (_heapMemorySections.Count == 0)
-            {
-                return;
-            }
-            
-//            foreach (var each in _heapMemorySections)
-            {
-                ParseHeapMemory(_heapMemorySections[_heapMemorySections.Count - 1], writer);
-            }
-        }
-
-        private void ParseHeapMemory(HeapMemory heapMemory, TextWriter writer)
-        {
-            var memorySections = heapMemory.HeapMemorySections;
-
-            foreach (var each in memorySections.SelectMany(_ => _.HeapSectionBlocks))
-            {
-                ParseMemorySection(each, writer);
-            }
-        }
-
-        private void ParseMemorySection(HeapSectionBlock section, TextWriter writer)
-        {
-//            if ((HeapSectionBlockKind)section.BlockKind == HeapSectionBlockKind.PtrFree)
-//            {
-//                return;
-//            }
-            
-            if (section.IsFree)
-            {
-                writer.WriteLine("This section is not PtrFree, but IsFree. Skipping.");
-                
-                return;
-            }
-            
-            writer.WriteLine();
-            writer.WriteLine("--------------------------------------------");
-
-//            var binaryReader = new BinaryReader(new MemoryStream(section.BlockData));
-            for (var i = section.StartPtr; i <= section.StartPtr + section.Size; i += section.ObjSize)
-            {
-                if (LiveObjects.TryGetValue(i, out var objectInBlock))
-                {
-                    writer.WriteLine($"{objectInBlock.Class.Name}:{objectInBlock.ObjectPtr}");//JsonConvert.SerializeObject(objectInBlock));
-
-                    if (objectInBlock.Class.Name == "TestScript" || objectInBlock.Class.Name == "TestScript2")
-                    {
-                        var binaryReader = new BinaryReader(new MemoryStream(section.BlockData));
-                        var minAlignment = objectInBlock.Class.MinAlignment;
-                        while (binaryReader.BaseStream.Position != binaryReader.BaseStream.Length)
-                        {
-                            var potentialPointer = binaryReader.ReadUInt64();
-                            if (LiveObjects.TryGetValue(potentialPointer, out var objectInObject))
-                            {
-                                writer.Write($"\t\t{objectInObject.Class.Name}:{objectInObject.ObjectPtr}\n");
-                            }
-
-                        }
-//                        for (var j = i; j < i + section.ObjSize; j += minAlignment)
-//                        {
-//                            if (_liveObjects.TryGetValue(i, out var objectInObject))
-//                            {
-//                                writer.Write("\t\t" + JsonConvert.SerializeObject(objectInObject));
-//                            }
-//                        }
-                    }
-                    
-                }
-            }
-            
-            writer.WriteLine("--------------------------------------------");
-            writer.WriteLine();
         }
 
         public void DumpGarbageCollectionsStatsByType(TextWriter writer)
@@ -422,7 +340,7 @@ namespace ConsoleApplication1
 
         public void AddHeapMemorySection(HeapMemory heapMemory)
         {
-            _heapMemorySections.Add(heapMemory);
+            HeapMemorySections.Add(heapMemory);
         }
     }
 }

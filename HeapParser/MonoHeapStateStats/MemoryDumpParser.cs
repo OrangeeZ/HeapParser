@@ -12,7 +12,7 @@ namespace ConsoleApplication1.MonoHeapStateStats
         {
             _monoHeapState = monoHeapState;
         }
-        
+
         public void DumpMemoryHeapParseResults(TextWriter writer)
         {
             if (_monoHeapState.HeapMemorySections.Count == 0)
@@ -47,23 +47,22 @@ namespace ConsoleApplication1.MonoHeapStateStats
 
             for (var i = section.StartPtr; i <= section.StartPtr + section.Size; i += section.ObjSize)
             {
-                if (_monoHeapState.LiveObjects.TryGetValue(i, out var objectInBlock))
+                if (!_monoHeapState.LiveObjects.TryGetValue(i, out var objectInBlock))
                 {
-                    writer.WriteLine($"{objectInBlock.Class.Name}:{objectInBlock.ObjectPtr}");
+                    continue;
+                }
 
-                    if (objectInBlock.Class.Name == "TestScript" || objectInBlock.Class.Name == "TestScript2")
+                writer.WriteLine($"{objectInBlock.Class.Name}:{objectInBlock.ObjectPtr}");
+
+                var binaryReader = new BinaryReader(new MemoryStream(section.BlockData));
+                var minAlignment = objectInBlock.Class.MinAlignment;
+                while (binaryReader.BaseStream.Position != binaryReader.BaseStream.Length)
+                {
+                    var potentialPointer = minAlignment == 4 ? binaryReader.ReadUInt32() : binaryReader.ReadUInt64();
+
+                    if (_monoHeapState.LiveObjects.TryGetValue(potentialPointer, out var objectInObject))
                     {
-                        var binaryReader = new BinaryReader(new MemoryStream(section.BlockData));
-                        var minAlignment = objectInBlock.Class.MinAlignment;
-                        while (binaryReader.BaseStream.Position != binaryReader.BaseStream.Length)
-                        {
-                            var potentialPointer =
-                                minAlignment == 4 ? binaryReader.ReadUInt32() : binaryReader.ReadUInt64();
-                            if (_monoHeapState.LiveObjects.TryGetValue(potentialPointer, out var objectInObject))
-                            {
-                                writer.Write($"\t\t{objectInObject.Class.Name}:{objectInObject.ObjectPtr}\n");
-                            }
-                        }
+                        writer.Write($"\t\t{objectInObject.Class.Name}:{objectInObject.ObjectPtr}\n");
                     }
                 }
             }

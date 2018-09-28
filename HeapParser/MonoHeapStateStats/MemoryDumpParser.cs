@@ -55,7 +55,7 @@ namespace HeapParser.MonoHeapStateStats
                     continue;
                 }
 
-                writer.WriteLine($"{objectInBlock.Class.Name}:{objectInBlock.ObjectPtr}");
+                writer.WriteLine($"{objectInBlock.Class.Name} : {objectInBlock.ObjectPtr}");
 
                 var binaryReader = new BinaryReader(new MemoryStream(section.BlockData));
                 var minAlignment = objectInBlock.Class.MinAlignment;
@@ -66,7 +66,12 @@ namespace HeapParser.MonoHeapStateStats
                     if (_monoHeapState.LiveObjects.TryGetValue(potentialPointer, out var objectInObject))
                     {
                         stringBuilder.Clear();
-                        stringBuilder.Append("\t\t").Append(objectInObject.Class.Name).Append(objectInObject.ObjectPtr);
+                        stringBuilder
+                            .Append("\t\t")
+                            .Append(objectInObject.Class.Name)
+                            .Append(" : ")
+                            .Append(objectInObject.ObjectPtr);
+                        
                         stringBuilder.CopyTo(0, charBuffer, 0, stringBuilder.Length);
                         
                         writer.WriteLine(charBuffer, 0, stringBuilder.Length);

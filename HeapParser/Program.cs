@@ -720,7 +720,7 @@ namespace HeapParser
             return customEvents[resultIndex];
         }
 
-        private static void DumpAllocationByType(HeapTagParser heapTagParser, MonoHeapState monoHeapState, string dumpFilePath)
+        private static void DumpAllocationByType(MonoHeapState monoHeapState, string dumpFilePath)
         {
             using (var outStream = new FileStream(dumpFilePath + ".AllocationByBacktrace.txt", FileMode.Create))
             {
@@ -804,9 +804,11 @@ namespace HeapParser
 
         static void Main(string[] args)
         {
+            var heapTagParser = default(HeapTagParser);
+
             using (var stream = new FileStream(args[0], FileMode.Open, FileAccess.Read, FileShare.None, int.MaxValue / 2))
             {
-                var heapTagParser = new HeapTagParser(stream);
+                heapTagParser = new HeapTagParser(stream);
 
                 heapTagParser.PerformHeapFirstPass();
 
@@ -814,11 +816,11 @@ namespace HeapParser
                 var toTag = SelectTargetCustomEvent(heapTagParser.GetCustomEvents());
 
                 heapTagParser.PerformHeapSecondPass(fromTag, toTag);
-
-                DumpGarbageCollectionByType(heapTagParser.HeapState, args[0]);
-
-                DumpAllocationByType(heapTagParser, heapTagParser.HeapState, args[0]);
             }
+            
+            DumpGarbageCollectionByType(heapTagParser.HeapState, args[0]);
+
+            DumpAllocationByType(heapTagParser.HeapState, args[0]);
         }
     }
 }

@@ -12,8 +12,6 @@ namespace HeapParser
     {
         private Stream _inputStream;
 
-        private List<HeapDescriptor> _heapDescriptors;
-
         private List<CustomEvent> _heapCustomEvents;
         private List<Tuple<long, CustomEvent>> _heapCustomEventsAndPositions;
 
@@ -35,7 +33,6 @@ namespace HeapParser
         //First pass only reads custom events, new type/class/backtrace definitions
         public void PerformHeapFirstPass()
         {
-            _heapDescriptors = new List<HeapDescriptor>();
             _heapCustomEvents = new List<CustomEvent>();
             _heapCustomEventsAndPositions = new List<Tuple<long, CustomEvent>>();
 
@@ -45,14 +42,10 @@ namespace HeapParser
             var writerStats = new FileWriterStats();
             writerStats.LoadFrom(binaryReaderWrapper);
 
-            _heapDescriptors.Add(writerStats);
-
             Console.WriteLine(JsonConvert.SerializeObject(writerStats));
 
             var dumpStats = new HeapDumpStats();
             dumpStats.LoadFrom(binaryReaderWrapper);
-
-            _heapDescriptors.Add(dumpStats);
 
             Console.WriteLine(JsonConvert.SerializeObject(dumpStats));
 
@@ -246,11 +239,6 @@ namespace HeapParser
 
             yield return result.SetData(HeapTag.CustomEvent, reader.Reader.BaseStream.Length,
                 new CustomEvent("File end") {Timestamp = (ulong) reader.Reader.BaseStream.Length});
-        }
-
-        public List<HeapDescriptor> GetHeapDescriptors()
-        {
-            return _heapDescriptors;
         }
 
         public IList<CustomEvent> GetCustomEvents()

@@ -617,7 +617,7 @@ namespace HeapParser
 
         public override void ApplyTo(MonoHeapState monoHeapState)
         {
-            monoHeapState.AddLiveObject(this);
+            monoHeapState.AddStaticLiveObject(this);
         }
     }
 

@@ -22,7 +22,6 @@ namespace HeapParser
         public struct LiveObject
         {
             public MonoType Class;
-            public MonoMethod Method;
             public ulong BackTracePtr;
 
             public ulong ObjectPtr;
@@ -32,11 +31,11 @@ namespace HeapParser
 
         public List<HeapMemory> HeapMemorySections = new List<HeapMemory>();
 
-        private ulong? ObjectClassPtr = null;
+        private ulong? _objectClassPtr = null;
 
         public void PostInitialize()
         {
-            ObjectClassPtr = PtrToClassMapping.FirstOrDefault(_ => _.Value.Name == "object").Key;
+            _objectClassPtr = PtrToClassMapping.FirstOrDefault(_ => _.Value.Name == "object").Key;
         }
 
         public void ResizeLiveObject(MonoObjectResize objectResize)
@@ -51,33 +50,20 @@ namespace HeapParser
 
         public void AddLiveObject(MonoObjectNew newObject)
         {
-            if (ObjectClassPtr == null)
+            if (_objectClassPtr == null)
             {
-                ObjectClassPtr = PtrToClassMapping.FirstOrDefault(_ => _.Value.Name == "object").Key;
+                _objectClassPtr = PtrToClassMapping.FirstOrDefault(_ => _.Value.Name == "object").Key;
             }
 
-            var liveObject = new LiveObject();
-
-            var backtrace = PtrToBackTraceMapping[newObject.BackTracePtr];
-            var index = Math.Max(backtrace.StackFrames.Length - 2, 0);
-            var stackFrame = backtrace.StackFrames.Length > 0 ? backtrace.StackFrames[index] : null;
-
-            if (stackFrame != null)
+            var liveObject = new LiveObject
             {
-                var referencingMethodPtr = stackFrame.MethodPtr;
-                var referencingMethod = PtrToMethodMapping.ContainsKey(referencingMethodPtr)
-                    ? PtrToMethodMapping[referencingMethodPtr]
-                    : default(MonoMethod);
-                liveObject.Method = referencingMethod;
-            }
-
-            liveObject.Class = PtrToClassMapping[newObject.ClassPtr];
-            liveObject.ObjectPtr = newObject.ObjectPtr;
-            liveObject.BackTracePtr = newObject.BackTracePtr;
-
-            liveObject.Size = newObject.Size;
-            liveObject.IsStatic = false;
-
+                Class = PtrToClassMapping[newObject.ClassPtr],
+                ObjectPtr = newObject.ObjectPtr,
+                BackTracePtr = newObject.BackTracePtr,
+                Size = newObject.Size,
+                IsStatic = false
+            };
+            
             LiveObjects.Add(liveObject.ObjectPtr, liveObject);
 
             if (!_totalAllocationsPerType.ContainsKey(newObject.ClassPtr))
@@ -88,21 +74,20 @@ namespace HeapParser
             _totalAllocationsPerType[newObject.ClassPtr] += liveObject.Size;
         }
 
-        public void AddLiveObject(MonoStaticClassAllocation newObject)
+        public void AddStaticLiveObject(MonoStaticClassAllocation newObject)
         {
-            if (ObjectClassPtr == null)
+            if (_objectClassPtr == null)
             {
-                ObjectClassPtr = PtrToClassMapping.FirstOrDefault(_ => _.Value.Name == "object").Key;
+                _objectClassPtr = PtrToClassMapping.FirstOrDefault(_ => _.Value.Name == "object").Key;
             }
 
-            var liveObject = new LiveObject();
-
-            liveObject.Class = PtrToClassMapping[newObject.ClassPtr];
-            liveObject.Method = null;
-            liveObject.ObjectPtr = newObject.ObjectPtr;
-
-            liveObject.Size = newObject.Size;
-            liveObject.IsStatic = true;
+            var liveObject = new LiveObject
+            {
+                Class = PtrToClassMapping[newObject.ClassPtr],
+                ObjectPtr = newObject.ObjectPtr,
+                Size = newObject.Size,
+                IsStatic = true
+            };
 
             LiveObjects.Add(liveObject.ObjectPtr, liveObject);
         }
@@ -110,55 +95,6 @@ namespace HeapParser
         public void RemoveLiveObject(MonoObjectGarbageCollected collectedObject)
         {
             LiveObjects.Remove(collectedObject.ObjectPtr);
-        }
-
-        public void DumpMethodAllocationStats(TextWriter writer)
-        {
-            var backtraceToString = new Dictionary<ulong, string>();
-
-            foreach (var each in PtrToBackTraceMapping)
-            {
-                var backtraceString = BackTraceToString(each.Value);
-
-                backtraceToString[each.Key] = backtraceString;
-            }
-
-            if (!backtraceToString.ContainsKey(0))
-            {
-                backtraceToString[0] = string.Empty;
-            }
-
-            //foreach ( var each in _liveObjects ) {
-
-            //	writer.WriteLine( each.Value.Class.Name + " " + each.Value.Size + " Static: " + each.Value.IsStatic );
-            //}
-
-            var statsBySize = new Dictionary<MonoType, uint>();
-            foreach (var each in LiveObjects)
-            {
-                if (!statsBySize.ContainsKey(each.Value.Class))
-                {
-                    statsBySize[each.Value.Class] = 0;
-                }
-
-                statsBySize[each.Value.Class] += each.Value.Size;
-            }
-
-            var statsBySizeList = statsBySize.ToList();
-            statsBySizeList.Sort((a, b) => b.Value.CompareTo(a.Value));
-
-            var sizeTotalMb = 0f;
-            foreach (var each in statsBySizeList)
-            {
-                var currentAllocationSize = ((float)each.Value / (1024 * 1024));
-                sizeTotalMb += currentAllocationSize;
-                if (currentAllocationSize > 0.1f)
-                {
-                    writer.WriteLine(each.Key.Name + " " + currentAllocationSize + " MB");
-                }
-            }
-
-            Console.WriteLine(sizeTotalMb + " MB");
         }
 
         public void DumpTotalMethodAllocationStatsByType(TextWriter writer)

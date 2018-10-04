@@ -15,20 +15,6 @@ namespace HeapParser.MonoHeapStateStats
 
         public void DumpGarbageCollectionsStatsByType(TextWriter writer)
         {
-            var backtraceToString = new Dictionary<ulong, string>();
-
-            foreach (var each in _monoHeapState.PtrToBackTraceMapping)
-            {
-                var backtraceString = _monoHeapState.BackTraceToString(each.Value);
-
-                backtraceToString[each.Key] = backtraceString;
-            }
-
-            if (!backtraceToString.ContainsKey(0))
-            {
-                backtraceToString[0] = string.Empty;
-            }
-
             var statsByCount = new Dictionary<ulong, uint>();
             foreach (var each in _monoHeapState.GarbageCollectedObjects)
             {

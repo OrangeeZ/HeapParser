@@ -8,6 +8,8 @@ namespace HeapParser
 {
     public class MonoHeapState
     {
+        public FileWriterStats WriterStats { get; set; }
+
         public Dictionary<ulong, MonoType> PtrToClassMapping = new Dictionary<ulong, MonoType>();
         public Dictionary<ulong, MonoMethod> PtrToMethodMapping = new Dictionary<ulong, MonoMethod>();
         public Dictionary<ulong, MonoBackTrace> PtrToBackTraceMapping = new Dictionary<ulong, MonoBackTrace>();
@@ -19,6 +21,8 @@ namespace HeapParser
         
         private Dictionary<ulong, ulong> _totalAllocationsPerType = new Dictionary<ulong, ulong>();
 
+        private CustomEvent _lastCustomEvent;
+
         public struct LiveObject
         {
             public MonoType Class;
@@ -27,6 +31,8 @@ namespace HeapParser
             public ulong ObjectPtr;
             public uint Size;
             public bool IsStatic;
+
+            public CustomEvent LastCustomEvent;
         }
 
         public List<HeapMemory> HeapMemorySections = new List<HeapMemory>();
@@ -36,6 +42,11 @@ namespace HeapParser
         public void PostInitialize()
         {
             _objectClassPtr = PtrToClassMapping.FirstOrDefault(_ => _.Value.Name == "object").Key;
+        }
+
+        public void SetLastCustomEvent(CustomEvent lastCustomEvent)
+        {
+            _lastCustomEvent = lastCustomEvent;
         }
 
         public void ResizeLiveObject(MonoObjectResize objectResize)
@@ -61,7 +72,8 @@ namespace HeapParser
                 ObjectPtr = newObject.ObjectPtr,
                 BackTracePtr = newObject.BackTracePtr,
                 Size = newObject.Size,
-                IsStatic = false
+                IsStatic = false,
+                LastCustomEvent = _lastCustomEvent
             };
             
             LiveObjects.Add(liveObject.ObjectPtr, liveObject);
@@ -86,7 +98,8 @@ namespace HeapParser
                 Class = PtrToClassMapping[newObject.ClassPtr],
                 ObjectPtr = newObject.ObjectPtr,
                 Size = newObject.Size,
-                IsStatic = true
+                IsStatic = true,
+                LastCustomEvent = _lastCustomEvent
             };
 
             LiveObjects.Add(liveObject.ObjectPtr, liveObject);
@@ -230,6 +243,11 @@ namespace HeapParser
         public void AddHeapMemorySection(HeapMemory heapMemory)
         {
             HeapMemorySections.Add(heapMemory);
+        }
+
+        public void SetWriterStats(FileWriterStats writerStats)
+        {
+            WriterStats = writerStats;
         }
     }
 }

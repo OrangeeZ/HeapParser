@@ -722,47 +722,56 @@ namespace HeapParser
 
         private static void DumpAllocationByType(MonoHeapState monoHeapState, string dumpFilePath)
         {
-            using (var outStream = new FileStream(dumpFilePath + ".AllocationByBacktrace.txt", FileMode.Create))
-            {
-                var streamWriter = new StreamWriter(outStream);
+//            using (var outStream = new FileStream(dumpFilePath + ".AllocationByBacktrace.txt", FileMode.Create))
+//            {
+//                var streamWriter = new StreamWriter(outStream);
+//
+//                monoHeapState.DumpMethodAllocationStatsByBacktrace(streamWriter, staticsOnly: false);
+//
+//                streamWriter.Close();
+//            }
 
-                monoHeapState.DumpMethodAllocationStatsByBacktrace(streamWriter, staticsOnly: false);
-
-                streamWriter.Close();
-            }
-
-            using (var outStream = new FileStream(dumpFilePath + ".StaticAllocationByBacktrace.txt", FileMode.Create))
-            {
-                var streamWriter = new StreamWriter(outStream);
-
-                monoHeapState.DumpMethodAllocationStatsByBacktrace(streamWriter, staticsOnly: true);
-
-                streamWriter.Close();
-            }
-
-            using (var outStream = new FileStream(dumpFilePath + ".TotalAllocationByType.txt", FileMode.Create))
-            {
-                var streamWriter = new StreamWriter(outStream);
-
-                monoHeapState.DumpTotalMethodAllocationStatsByType(streamWriter);
-
-                streamWriter.Close();
-            }
-
-            using (var outStream = new FileStream(dumpFilePath + ".AllocationByType.txt", FileMode.Create))
-            {
-                var streamWriter = new StreamWriter(outStream);
-
-                monoHeapState.DumpMethodAllocationStatsByType(streamWriter);
-
-                streamWriter.Close();
-            }
+//            using (var outStream = new FileStream(dumpFilePath + ".StaticAllocationByBacktrace.txt", FileMode.Create))
+//            {
+//                var streamWriter = new StreamWriter(outStream);
+//
+//                monoHeapState.DumpMethodAllocationStatsByBacktrace(streamWriter, staticsOnly: true);
+//
+//                streamWriter.Close();
+//            }
+//
+//            using (var outStream = new FileStream(dumpFilePath + ".TotalAllocationByType.txt", FileMode.Create))
+//            {
+//                var streamWriter = new StreamWriter(outStream);
+//
+//                monoHeapState.DumpTotalMethodAllocationStatsByType(streamWriter);
+//
+//                streamWriter.Close();
+//            }
+//
+//            using (var outStream = new FileStream(dumpFilePath + ".AllocationByType.txt", FileMode.Create))
+//            {
+//                var streamWriter = new StreamWriter(outStream);
+//
+//                monoHeapState.DumpMethodAllocationStatsByType(streamWriter);
+//
+//                streamWriter.Close();
+//            }
             
             using (var outStream = new FileStream(dumpFilePath + ".MemoryHeapParseResults.txt", FileMode.Create))
             {
                 var streamWriter = new StreamWriter(outStream);
 
                 new MemoryDumpParser(monoHeapState).DumpMemoryHeapParseResults(streamWriter);
+
+                streamWriter.Close();
+            }
+            
+            using (var outStream = new FileStream(dumpFilePath + ".LiveAllocationsByType.txt", FileMode.Create))
+            {
+                var streamWriter = new StreamWriter(outStream);
+
+                new LiveAllocationsByType(monoHeapState).Dump(streamWriter);
 
                 streamWriter.Close();
             }
@@ -775,11 +784,11 @@ namespace HeapParser
                 foreach (var each in typeNames.Split(','))
                 {
                     var fileName = each.Replace("*", "_");
-                    using (var outStream = new FileStream(dumpFilePath + ".LiveAllocationByType." + fileName + ".txt", FileMode.Create))
+                    using (var outStream = new FileStream(dumpFilePath + ".LiveAllocationsByBacktrace." + fileName + ".txt", FileMode.Create))
                     {
                         var streamWriter = new StreamWriter(outStream);
 
-                        new LiveMethodAllocationsByType().DumpLiveMethodAllocationStatsByType(monoHeapState, streamWriter, each);
+                        new LiveAllocationsByBacktrace(monoHeapState).Dump(streamWriter, each);
 
                         streamWriter.Close();
                     }
@@ -787,8 +796,7 @@ namespace HeapParser
             }
         }
 
-        private static void DumpGarbageCollectionByType(MonoHeapState monoHeapState,
-            string dumpFilePath)
+        private static void DumpGarbageCollectionByType(MonoHeapState monoHeapState, string dumpFilePath)
         {
             Console.WriteLine("Dumping garbage collection stats by type...");
 

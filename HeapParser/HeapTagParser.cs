@@ -50,6 +50,7 @@ namespace HeapParser
             Console.WriteLine(JsonConvert.SerializeObject(dumpStats));
 
             HeapState = new MonoHeapState();
+            HeapState.SetWriterStats(writerStats);
 
             var dryRunExceptions = new bool[_heapDescriptorFactory.MatchingTypes.Length];
             dryRunExceptions[(int) HeapTag.CustomEvent] = true;
@@ -70,6 +71,7 @@ namespace HeapParser
 
                 if (each.Tag == HeapTag.CustomEvent)
                 {
+                    HeapState.SetLastCustomEvent(each.Descriptor as CustomEvent);
                     _heapCustomEvents.Add(each.Descriptor as CustomEvent);
                     _heapCustomEventsAndPositions.Add(new Tuple<long, CustomEvent>(
                         binaryReaderWrapper.Reader.BaseStream.Position, each.Descriptor as CustomEvent));
@@ -105,14 +107,21 @@ namespace HeapParser
                 {
                     heapDescriptorData = each;
 
+                    if (each.Tag == HeapTag.CustomEvent)
+                    {
+                        HeapState.SetLastCustomEvent(each.Descriptor as CustomEvent);
+                    }
+
                     each.Descriptor.ApplyTo(HeapState);
 
-                    if (each.Tag == HeapTag.CustomEvent &&
-                        (each.Descriptor as CustomEvent).Timestamp == toEvent.Timestamp)
+                    if (each.Tag == HeapTag.CustomEvent)
                     {
-                        var customEvent = (each.Descriptor as CustomEvent);
-                        Console.WriteLine($"Hit {customEvent.EventName}:{customEvent.Timestamp}");
-                        break;
+                        if ((each.Descriptor as CustomEvent).Timestamp == toEvent.Timestamp)
+                        {
+                            var customEvent = (each.Descriptor as CustomEvent);
+                            Console.WriteLine($"Hit {customEvent.EventName}:{customEvent.Timestamp}");
+                            break;
+                        }
                     }
                 }
             }

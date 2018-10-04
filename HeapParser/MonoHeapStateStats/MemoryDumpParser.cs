@@ -1,6 +1,8 @@
-﻿using System.IO;
+﻿using System;
+using System.IO;
 using System.Linq;
 using System.Text;
+using Newtonsoft.Json;
 
 namespace HeapParser.MonoHeapStateStats
 {
@@ -45,36 +47,49 @@ namespace HeapParser.MonoHeapStateStats
             writer.WriteLine();
             writer.WriteLine("--------------------------------------------");
 
-            var stringBuilder = new StringBuilder();
-            var charBuffer = new char[1024];
-            
-            for (var i = section.StartPtr; i <= section.StartPtr + section.Size; i += section.ObjSize)
+            var pointerSize = _monoHeapState.WriterStats.PointerSize;
+            var currentPtr = section.StartPtr;
+            for (var i = 0; i < section.Size; i += (int) section.ObjSize, currentPtr += section.ObjSize)
             {
-                if (!_monoHeapState.LiveObjects.TryGetValue(i, out var objectInBlock))
+                if (!_monoHeapState.LiveObjects.TryGetValue(currentPtr, out var objectInBlock))
                 {
                     continue;
                 }
 
-                writer.WriteLine($"{objectInBlock.Class.Name} : {objectInBlock.ObjectPtr}");
+                writer.WriteLine($"{objectInBlock.Class.Name}, IsStatic = {objectInBlock.IsStatic} : {objectInBlock.ObjectPtr}");
 
-                var binaryReader = new BinaryReader(new MemoryStream(section.BlockData));
-                var minAlignment = objectInBlock.Class.MinAlignment;
-                while (binaryReader.BaseStream.Position != binaryReader.BaseStream.Length)
+                if (objectInBlock.Class.Name == "MW2.UI.Menu.PopupMenu.PopupMenuScreen")
                 {
-                    var potentialPointer = minAlignment == 4 ? binaryReader.ReadUInt32() : binaryReader.ReadUInt64();
+                    Console.WriteLine(JsonConvert.SerializeObject(objectInBlock));
+                    Console.WriteLine(section.ObjSize);
+                }
+
+                var minAlignment = objectInBlock.Class.MinAlignment;
+                var startPosition = i;
+                var endPosition = startPosition + section.ObjSize;
+
+                if (endPosition > section.Size)
+                {
+                    break;
+                }
+
+                while (startPosition + pointerSize <= endPosition)
+                {
+                    var potentialPointer = pointerSize == 4 ? BitConverter.ToUInt32(section.BlockData, startPosition) : BitConverter.ToUInt64(section.BlockData, startPosition);
 
                     if (_monoHeapState.LiveObjects.TryGetValue(potentialPointer, out var objectInObject))
                     {
-                        stringBuilder.Clear();
-                        stringBuilder
-                            .Append("\t\t")
-                            .Append(objectInObject.Class.Name)
-                            .Append(" : ")
-                            .Append(objectInObject.ObjectPtr);
-                        
-                        stringBuilder.CopyTo(0, charBuffer, 0, stringBuilder.Length);
-                        
-                        writer.WriteLine(charBuffer, 0, stringBuilder.Length);
+                        writer.Write("\t\t");
+                        writer.Write(objectInObject.Class.Name);
+                        writer.Write(" : ");
+                        writer.Write(objectInObject.ObjectPtr);
+                        writer.Write("\n");
+
+                        startPosition += pointerSize;
+                    }
+                    else
+                    {
+                        startPosition += (int) minAlignment;
                     }
                 }
             }
